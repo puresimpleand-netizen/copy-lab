@@ -360,7 +360,7 @@ Return:
                     <button key={s} className={`cl-mode ${aeoSource === s ? "on" : ""}`}
                       onClick={() => setAeoSource(s)}
                       style={{ flex: 1, padding: "9px 10px", borderRadius: 5, border: "none", cursor: "pointer", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 12, letterSpacing: "0.03em", background: "transparent", color: "#7A7570", transition: "all 0.15s" }}>
-                      {s === "existing" ? "Revise Existing" : "From a Brief"}
+                      {s === "existing" ? "Revise existing" : "Create new"}
                     </button>
                   ))}
                 </div>
