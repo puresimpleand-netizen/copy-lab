@@ -112,6 +112,7 @@ export default function CopyLab() {
   const [brief, setBrief] = useState("");
   const [copyType, setCopyType] = useState("headline");
   const [tones, setTones] = useState([]);
+  const [generateKeyword, setGenerateKeyword] = useState("");
 
   const [inputCopy, setInputCopy] = useState("");
   const [context, setContext] = useState("");
@@ -130,11 +131,14 @@ export default function CopyLab() {
     if (!brief.trim()) return;
     setLoading(true); setError(null); setResult(null);
     try {
-      const sys = `You are a senior UX copywriter and brand strategist. Return ONLY valid JSON. No markdown, no preamble.`;
+      const sys = `You are a senior UX copywriter and brand strategist${generateKeyword.trim() ? " with strong SEO instincts" : ""}. Return ONLY valid JSON. No markdown, no preamble.`;
+      const keywordBlock = generateKeyword.trim()
+        ? `\nTarget keyword: "${generateKeyword.trim()}" — work it in naturally in at least one variant where it fits the format and doesn't feel forced. Don't stuff it if it hurts readability.`
+        : "";
       const usr = `Write 3 distinct variants of ${copyType.replace(/_/g, " ")} copy for: "${brief}"
-Tone: ${tones.length ? tones.join(", ") : "balanced and on-brand"}
+Tone: ${tones.length ? tones.join(", ") : "balanced and on-brand"}${keywordBlock}
 Return:
-{"variants":[{"copy":"","angle":"2-3 word label","rationale":"1-2 sentences","strength":"1 sentence","watch_out":"1 honest limitation"}]}`;
+{"variants":[{"copy":"","angle":"2-3 word label","rationale":"1-2 sentences","strength":"1 sentence","watch_out":"1 honest limitation"${generateKeyword.trim() ? ',"keyword_fit":"1 sentence on whether/how the keyword was used, or why it was skipped"' : ""}}]}`;
       const data = await callClaude(sys, usr);
       setResult({ type: "generate", ...data });
       setSelectedV(0);
@@ -231,6 +235,13 @@ Return:
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {TONE_TAGS.map(t => <Tag key={t} label={t} active={tones.includes(t)} onClick={() => toggleTone(t)} />)}
                 </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Target Keyword <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, works it in naturally)</span></label>
+                <input className="cl-input" value={generateKeyword} onChange={e => setGenerateKeyword(e.target.value)}
+                  placeholder="e.g. wireless earbuds, home security camera…"
+                  style={inputBase} />
               </div>
 
               <button className="cl-btn" onClick={handleGenerate} disabled={loading || !brief.trim()}
@@ -350,6 +361,13 @@ Return:
                       <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590", marginBottom: 6 }}>Strategy</p>
                       <p style={{ fontSize: 13, color: "#3A3730", lineHeight: 1.6 }}>{v.rationale}</p>
                     </div>
+
+                    {v.keyword_fit && (
+                      <div style={{ padding: "12px 13px", background: "#F5F8FF", border: "1px solid #3A5FC820", borderRadius: 8 }}>
+                        <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#3A5FC8", marginBottom: 5 }}>🔑 Keyword fit</p>
+                        <p style={{ fontSize: 12, color: "#2A3D80", lineHeight: 1.55 }}>{v.keyword_fit}</p>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
