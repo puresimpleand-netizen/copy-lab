@@ -22,12 +22,12 @@ const TONE_TAGS = [
 
 const API_URL = "/api/generate";
 
-async function callClaude(systemPrompt, userPrompt) {
+async function callClaude(systemPrompt, userPrompt, maxTokens = 2000) {
   const res = await fetch(API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      max_tokens: 2000,
+      max_tokens: maxTokens,
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],
     }),
@@ -121,6 +121,13 @@ export default function CopyLab() {
   const [targetKeyword, setTargetKeyword] = useState("");
   const [analyzeAudience, setAnalyzeAudience] = useState("");
 
+  const [aeoSource, setAeoSource] = useState("existing"); // "existing" | "brief"
+  const [aeoExistingFaqs, setAeoExistingFaqs] = useState("");
+  const [aeoBrief, setAeoBrief] = useState("");
+  const [aeoKeywords, setAeoKeywords] = useState("");
+  const [aeoFeatures, setAeoFeatures] = useState("");
+  const [aeoAudience, setAeoAudience] = useState("");
+
   const toggleTone = t => setTones(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
 
   const handleCopy = (text, id) => {
@@ -171,6 +178,41 @@ Return:
     setLoading(false);
   };
 
+  const handleAeo = async () => {
+    const sourceContent = aeoSource === "existing" ? aeoExistingFaqs : aeoBrief;
+    if (!sourceContent.trim()) return;
+    setLoading(true); setError(null); setResult(null);
+    try {
+      const sys = `You are an AEO (Answer Engine Optimization) specialist and UX copywriter. You write FAQs designed to be pulled directly into AI-generated answers (ChatGPT, Google AI Overviews, Perplexity, voice assistants), meaning: each answer leads with the direct answer in the first sentence, uses natural question phrasing real people actually search/ask, stays concise and self-contained (no "as mentioned above"), and uses concrete specifics over vague marketing language. Return ONLY valid JSON. No markdown, no preamble.`;
+
+      const task = aeoSource === "existing"
+        ? `Revise the following FAQs to be AEO-optimized. Keep the core information but rewrite for directness and answer-engine friendliness. Add or split questions if it improves answerability. Existing FAQs:\n"""\n${aeoExistingFaqs}\n"""`
+        : `Write 5-8 AEO-optimized FAQs from this brief:\n"""\n${aeoBrief}\n"""`;
+
+      const keywordBlock = aeoKeywords.trim()
+        ? `\nTarget keywords to work in naturally where relevant: ${aeoKeywords.trim()}`
+        : "";
+      const featuresBlock = aeoFeatures.trim()
+        ? `\nFeatures/details to highlight where relevant: ${aeoFeatures.trim()}`
+        : "";
+      const audienceBlock = aeoAudience.trim()
+        ? `\nTarget audience: ${aeoAudience.trim()} — phrase questions the way this audience would actually ask them.`
+        : "";
+
+      const usr = `${task}${keywordBlock}${featuresBlock}${audienceBlock}
+For each FAQ, score "directness" (0-100: does the first sentence of the answer fully resolve the question with no throat-clearing).
+Also identify which of the target keywords (if any) were actually used across the FAQs, and which features/details were highlighted.
+Return:
+{"faqs":[{"question":"phrased as a real user would ask","answer":"leads with the direct answer, then supporting detail","directness":0}],"keywords_used":["keyword actually used"],"features_highlighted":["feature actually mentioned"],"aeo_notes":"1-2 sentences of overall guidance or gaps to address"}`;
+
+      const data = await callClaude(sys, usr, 3000);
+      setResult({ type: "aeo", ...data });
+    } catch {
+      setError("AEO revision failed. Try again.");
+    }
+    setLoading(false);
+  };
+
   return (
     <>
       <style>{`
@@ -202,11 +244,11 @@ Return:
           </span>
 
           <div style={{ display: "flex", background: "#E8E4DC", borderRadius: 7, padding: 3, gap: 2 }}>
-            {["generate", "analyze"].map(m => (
+            {["generate", "analyze", "aeo"].map(m => (
               <button key={m} className={`cl-mode ${mode === m ? "on" : ""}`}
                 onClick={() => { setMode(m); setResult(null); setError(null); }}
-                style={{ padding: "7px 16px", borderRadius: 5, border: "none", cursor: "pointer", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 12, letterSpacing: "0.03em", background: "transparent", color: "#7A7570", transition: "all 0.15s" }}>
-                {m === "generate" ? "Generate" : "Analyze"}
+                style={{ padding: "7px 12px", borderRadius: 5, border: "none", cursor: "pointer", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 12, letterSpacing: "0.03em", background: "transparent", color: "#7A7570", transition: "all 0.15s" }}>
+                {m === "generate" ? "Generate" : m === "analyze" ? "Analyze" : "AEO"}
               </button>
             ))}
           </div>
@@ -307,6 +349,66 @@ Return:
             </div>
           )}
 
+          {/* ── AEO FORM ── */}
+          {mode === "aeo" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+              <div>
+                <label style={labelStyle}>Source</label>
+                <div style={{ display: "flex", background: "#E8E4DC", borderRadius: 7, padding: 3, gap: 2 }}>
+                  {["existing", "brief"].map(s => (
+                    <button key={s} className={`cl-mode ${aeoSource === s ? "on" : ""}`}
+                      onClick={() => setAeoSource(s)}
+                      style={{ flex: 1, padding: "9px 10px", borderRadius: 5, border: "none", cursor: "pointer", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 12, letterSpacing: "0.03em", background: "transparent", color: "#7A7570", transition: "all 0.15s" }}>
+                      {s === "existing" ? "Revise Existing" : "From a Brief"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {aeoSource === "existing" ? (
+                <div>
+                  <label style={labelStyle}>Existing FAQs</label>
+                  <textarea className="cl-input" value={aeoExistingFaqs} onChange={e => setAeoExistingFaqs(e.target.value)} rows={6}
+                    placeholder="Paste your current FAQ questions and answers here."
+                    style={{ ...inputBase, resize: "none" }} />
+                </div>
+              ) : (
+                <div>
+                  <label style={labelStyle}>Product / Topic Brief</label>
+                  <textarea className="cl-input" value={aeoBrief} onChange={e => setAeoBrief(e.target.value)} rows={6}
+                    placeholder="What's this for? Product, feature set, common customer questions, anything AI-generated answers should get right."
+                    style={{ ...inputBase, resize: "none" }} />
+                </div>
+              )}
+
+              <div>
+                <label style={labelStyle}>Target Keywords <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, comma-separated)</span></label>
+                <input className="cl-input" value={aeoKeywords} onChange={e => setAeoKeywords(e.target.value)}
+                  placeholder="e.g. wireless earbuds battery life, water resistance rating"
+                  style={inputBase} />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Features to Highlight <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, comma-separated)</span></label>
+                <input className="cl-input" value={aeoFeatures} onChange={e => setAeoFeatures(e.target.value)}
+                  placeholder="e.g. 30-hour battery, IPX7 rating, wireless charging"
+                  style={inputBase} />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Target Audience <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional)</span></label>
+                <input className="cl-input" value={aeoAudience} onChange={e => setAeoAudience(e.target.value)}
+                  placeholder="e.g. first-time buyers, busy parents, Gen Z gamers…"
+                  style={inputBase} />
+              </div>
+
+              <button className="cl-btn" onClick={handleAeo} disabled={loading || !(aeoSource === "existing" ? aeoExistingFaqs : aeoBrief).trim()}
+                style={{ padding: "15px", background: "#C8401A", color: "#FFF", border: "none", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, letterSpacing: "0.04em", cursor: "pointer", transition: "background 0.15s" }}>
+                {loading ? "Optimizing…" : "Optimize for AEO →"}
+              </button>
+            </div>
+          )}
+
           {/* ── LOADING ── */}
           {loading && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, padding: "40px 0" }}>
@@ -316,7 +418,7 @@ Return:
                 ))}
               </div>
               <p style={{ color: "#A0998F", fontSize: 13 }}>
-                {mode === "generate" ? "Crafting 3 strategic variants…" : "Running full copy audit…"}
+                {mode === "generate" ? "Crafting 3 strategic variants…" : mode === "analyze" ? "Running full copy audit…" : "Optimizing for answer engines…"}
               </p>
             </div>
           )}
@@ -457,6 +559,66 @@ Return:
                     style={{ position: "absolute", top: 14, right: 14, padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === "rewrite" ? "#1E7A48" : "#9A9590" }}>
                     {copied === "rewrite" ? "✓" : "Copy"}
                   </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── AEO RESULTS ── */}
+          {!loading && result?.type === "aeo" && (
+            <div className="cl-fade" style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 20 }}>
+
+              {result.aeo_notes && (
+                <div style={{ padding: "16px", background: "#1C1915", borderRadius: 10 }}>
+                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", color: "#C8401A", marginBottom: 8 }}>AEO Notes</p>
+                  <p style={{ fontSize: 13, color: "#E8E4DC", lineHeight: 1.6 }}>{result.aeo_notes}</p>
+                </div>
+              )}
+
+              <div>
+                <h2 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 15, color: "#1C1915", letterSpacing: "-0.3px", marginBottom: 14 }}>
+                  {result.faqs?.length || 0} AEO-Optimized FAQ{result.faqs?.length === 1 ? "" : "s"}
+                </h2>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {result.faqs?.map((f, i) => (
+                    <div key={i} style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px", position: "relative" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, marginBottom: 8 }}>
+                        <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 15, color: "#1C1915", lineHeight: 1.35 }}>{f.question}</p>
+                        {typeof f.directness === "number" && (
+                          <span style={{ flexShrink: 0, fontFamily: "'DM Mono', monospace", fontSize: 11, fontWeight: 500, color: scoreColor(f.directness), background: scoreColor(f.directness) + "15", border: `1px solid ${scoreColor(f.directness)}25`, borderRadius: 3, padding: "1px 7px" }}>
+                            {f.directness}%
+                          </span>
+                        )}
+                      </div>
+                      <p style={{ fontSize: 13, color: "#3A3730", lineHeight: 1.6, marginBottom: 10 }}>{f.answer}</p>
+                      <button className="cl-copy" onClick={() => handleCopy(`${f.question}\n${f.answer}`, `faq-${i}`)}
+                        style={{ padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === `faq-${i}` ? "#1E7A48" : "#9A9590" }}>
+                        {copied === `faq-${i}` ? "✓ Copied" : "Copy Q&A"}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {result.keywords_used?.length > 0 && (
+                <div>
+                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Keywords Used</p>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {result.keywords_used.map((k, i) => (
+                      <span key={i} style={{ padding: "5px 11px", background: "#F0FBF5", border: "1px solid #1E7A4820", borderRadius: 20, fontSize: 12, color: "#1A5C38", fontFamily: "'DM Sans', sans-serif" }}>{k}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {result.features_highlighted?.length > 0 && (
+                <div>
+                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Features Highlighted</p>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {result.features_highlighted.map((f, i) => (
+                      <span key={i} style={{ padding: "5px 11px", background: "#F5F8FF", border: "1px solid #3A5FC820", borderRadius: 20, fontSize: 12, color: "#2A3D80", fontFamily: "'DM Sans', sans-serif" }}>{f}</span>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
