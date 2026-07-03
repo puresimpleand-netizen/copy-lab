@@ -217,7 +217,7 @@ Return:
 
               <div>
                 <label style={labelStyle}>Brief</label>
-                <label style={labelStyle} htmlFor="copy-details">Brief</label>
+                <textarea className="cl-input" value={brief} onChange={e => setBrief(e.target.value)} rows={5}
                 <textarea className="cl-input" id="copy-details" name="copy-details" value={brief} onChange={e => setBrief(e.target.value)} rows={5}
                   placeholder="What are you writing? Product, feature, campaign moment, placement, goal — the more context, the better."
                   style={{ ...inputBase, resize: "none" }} />
