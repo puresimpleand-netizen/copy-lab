@@ -113,11 +113,13 @@ export default function CopyLab() {
   const [copyType, setCopyType] = useState("headline");
   const [tones, setTones] = useState([]);
   const [generateKeyword, setGenerateKeyword] = useState("");
+  const [generateAudience, setGenerateAudience] = useState("");
 
   const [inputCopy, setInputCopy] = useState("");
   const [context, setContext] = useState("");
   const [analyzeFormat, setAnalyzeFormat] = useState("headline");
   const [targetKeyword, setTargetKeyword] = useState("");
+  const [analyzeAudience, setAnalyzeAudience] = useState("");
 
   const toggleTone = t => setTones(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
 
@@ -136,7 +138,7 @@ export default function CopyLab() {
         ? `\nTarget keyword: "${generateKeyword.trim()}" — work it in naturally in at least one variant where it fits the format and doesn't feel forced. Don't stuff it if it hurts readability.`
         : "";
       const usr = `Write 3 distinct variants of ${copyType.replace(/_/g, " ")} copy for: "${brief}"
-Tone: ${tones.length ? tones.join(", ") : "balanced and on-brand"}${keywordBlock}
+Tone: ${tones.length ? tones.join(", ") : "balanced and on-brand"}${generateAudience.trim() ? `\nTarget audience: ${generateAudience.trim()} — write with this audience's needs, vocabulary, and expectations in mind.` : ""}${keywordBlock}
 For each variant, also score (0-100): "tone_match" (how strongly the variant reflects the requested tone${tones.length ? ` — ${tones.join(", ")}` : ""})${generateKeyword.trim() ? ', "keyword_use" (how naturally and effectively the target keyword is used, 0 if not used at all)' : ""}.
 Return:
 {"variants":[{"copy":"","angle":"2-3 word label","rationale":"1-2 sentences","strength":"1 sentence","watch_out":"1 honest limitation","tone_match":0${generateKeyword.trim() ? ',"keyword_use":0' : ""}${generateKeyword.trim() ? ',"keyword_fit":"1 sentence on whether/how the keyword was used, or why it was skipped"' : ""}}]}`;
@@ -158,7 +160,7 @@ Return:
         ? `\nTarget keyword: "${targetKeyword.trim()}"\nAlso evaluate SEO and add these two entries inside "scores": "keyword_usage" (score + note on whether the keyword appears naturally, in a strong position, and isn't stuffed) and "length_fit" (score + note on whether the character count suits ${analyzeFormat.replace(/_/g, " ")} for search/display purposes, e.g. ~50-60 chars for a title, ~150-160 for a meta description, stating the actual character count in the note).`
         : "";
       const usr = `Review this ${analyzeFormat.replace(/_/g, " ")}: "${inputCopy}"
-${context ? `Context: ${context}` : ""}${seoBlock}
+${context ? `Context: ${context}` : ""}${analyzeAudience.trim() ? `\nTarget audience: ${analyzeAudience.trim()} — score "audience_fit" specifically against how well this copy speaks to this audience (their needs, vocabulary, expectations), not a generic audience.` : ""}${seoBlock}
 Return:
 {"verdict":"one sharp sentence","overall_score":78,"scores":{"clarity":{"score":80,"note":""},"tone_of_voice":{"score":75,"note":""},"audience_fit":{"score":82,"note":""},"accuracy":{"score":85,"note":""},"structure":{"score":70,"note":""}${targetKeyword.trim() ? ',"keyword_usage":{"score":0,"note":""},"length_fit":{"score":0,"note":""}' : ""}},"flags":["problem 1"],"improvements":["suggestion 1"],"rewrite":"sharper version or null"}`;
       const data = await callClaude(sys, usr);
@@ -239,6 +241,13 @@ Return:
               </div>
 
               <div>
+                <label style={labelStyle}>Target Audience <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional)</span></label>
+                <input className="cl-input" value={generateAudience} onChange={e => setGenerateAudience(e.target.value)}
+                  placeholder="e.g. first-time buyers, busy parents, Gen Z gamers…"
+                  style={inputBase} />
+              </div>
+
+              <div>
                 <label style={labelStyle}>Target Keyword <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, works it in naturally)</span></label>
                 <input className="cl-input" value={generateKeyword} onChange={e => setGenerateKeyword(e.target.value)}
                   placeholder="e.g. wireless earbuds, home security camera…"
@@ -268,6 +277,13 @@ Return:
                 <textarea className="cl-input" value={inputCopy} onChange={e => setInputCopy(e.target.value)} rows={4}
                   placeholder="Paste the copy here."
                   style={{ ...inputBase, resize: "none" }} />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Target Audience <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, sharpens audience fit scoring)</span></label>
+                <input className="cl-input" value={analyzeAudience} onChange={e => setAnalyzeAudience(e.target.value)}
+                  placeholder="e.g. first-time buyers, busy parents, Gen Z gamers…"
+                  style={inputBase} />
               </div>
 
               <div>
