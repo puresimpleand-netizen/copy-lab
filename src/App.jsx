@@ -2,16 +2,15 @@ import { useState } from "react";
 
 const COPY_TYPES = [
   { value: "headline", label: "Headline" },
-  { value: "tagline", label: "Tagline" },
+  { value: "sub_headline", label: "Sub Headline" },
+  { value: "body", label: "Body" },
   { value: "cta", label: "CTA" },
+  { value: "usp", label: "USP" },
   { value: "social_caption", label: "Social Caption" },
-  { value: "product_description", label: "Product Description" },
-  { value: "onboarding_message", label: "Onboarding / Welcome" },
-  { value: "push_notification", label: "Push Notification" },
-  { value: "email_subject", label: "Email Subject Line" },
-  { value: "tooltip", label: "Tooltip / Microcopy" },
   { value: "error_message", label: "Error Message" },
   { value: "empty_state", label: "Empty State" },
+  { value: "tooltip", label: "Tooltip" },
+  { value: "microcopy", label: "Microcopy" },
 ];
 
 const TONE_TAGS = [
@@ -19,6 +18,8 @@ const TONE_TAGS = [
   "Premium", "Minimal", "Urgent", "Conversational",
   "Bold", "Empowering", "Witty", "Grounded",
 ];
+
+const SENTENCE_CASE_RULE = "Grammar rule: use sentence case for all copy — capitalize only the first word and proper nouns, never Title Case.";
 
 const API_URL = "/api/generate";
 
@@ -140,7 +141,7 @@ export default function CopyLab() {
     if (!brief.trim()) return;
     setLoading(true); setError(null); setResult(null);
     try {
-      const sys = `You are a senior UX copywriter and brand strategist${generateKeyword.trim() ? " with strong SEO instincts" : ""}. Return ONLY valid JSON. No markdown, no preamble.`;
+      const sys = `You are a senior UX copywriter and brand strategist${generateKeyword.trim() ? " with strong SEO instincts" : ""}. ${SENTENCE_CASE_RULE} Return ONLY valid JSON. No markdown, no preamble.`;
       const keywordBlock = generateKeyword.trim()
         ? `\nTarget keyword: "${generateKeyword.trim()}" — work it in naturally in at least one variant where it fits the format and doesn't feel forced. Don't stuff it if it hurts readability.`
         : "";
@@ -162,7 +163,7 @@ Return:
     if (!inputCopy.trim()) return;
     setLoading(true); setError(null); setResult(null);
     try {
-      const sys = `You are a senior UX copy strategist${targetKeyword.trim() ? " and SEO copy specialist" : ""}. Be precise and direct. Return ONLY valid JSON. No markdown, no preamble.`;
+      const sys = `You are a senior UX copy strategist${targetKeyword.trim() ? " and SEO copy specialist" : ""}. Be precise and direct. ${SENTENCE_CASE_RULE} (Apply this rule to any rewrite you suggest.) Return ONLY valid JSON. No markdown, no preamble.`;
       const seoBlock = targetKeyword.trim()
         ? `\nTarget keyword: "${targetKeyword.trim()}"\nAlso evaluate SEO and add these two entries inside "scores": "keyword_usage" (score + note on whether the keyword appears naturally, in a strong position, and isn't stuffed) and "length_fit" (score + note on whether the character count suits ${analyzeFormat.replace(/_/g, " ")} for search/display purposes, e.g. ~50-60 chars for a title, ~150-160 for a meta description, stating the actual character count in the note).`
         : "";
@@ -183,7 +184,7 @@ Return:
     if (!sourceContent.trim()) return;
     setLoading(true); setError(null); setResult(null);
     try {
-      const sys = `You are an AEO (Answer Engine Optimization) specialist and UX copywriter. You write FAQs designed to be pulled directly into AI-generated answers (ChatGPT, Google AI Overviews, Perplexity, voice assistants), meaning: each answer leads with the direct answer in the first sentence, uses natural question phrasing real people actually search/ask, stays concise and self-contained (no "as mentioned above"), and uses concrete specifics over vague marketing language. Return ONLY valid JSON. No markdown, no preamble.`;
+      const sys = `You are an AEO (Answer Engine Optimization) specialist and UX copywriter. You write FAQs designed to be pulled directly into AI-generated answers (ChatGPT, Google AI Overviews, Perplexity, voice assistants), meaning: each answer leads with the direct answer in the first sentence, uses natural question phrasing real people actually search/ask, stays concise and self-contained (no "as mentioned above"), and uses concrete specifics over vague marketing language. ${SENTENCE_CASE_RULE} Return ONLY valid JSON. No markdown, no preamble.`;
 
       const task = aeoSource === "existing"
         ? `Revise the following FAQs to be AEO-optimized. Keep the core information but rewrite for directness and answer-engine friendliness. Add or split questions if it improves answerability. Existing FAQs:\n"""\n${aeoExistingFaqs}\n"""`
