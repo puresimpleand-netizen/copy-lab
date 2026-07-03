@@ -27,7 +27,7 @@ async function callClaude(systemPrompt, userPrompt) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      max_tokens: 1000,
+      max_tokens: 2000,
       system: systemPrompt,
       messages: [{ role: "user", content: userPrompt }],
     }),
@@ -218,7 +218,6 @@ Return:
               <div>
                 <label style={labelStyle}>Brief</label>
                 <textarea className="cl-input" value={brief} onChange={e => setBrief(e.target.value)} rows={5}
-                <textarea className="cl-input" id="copy-details" name="copy-details" value={brief} onChange={e => setBrief(e.target.value)} rows={5}
                   placeholder="What are you writing? Product, feature, campaign moment, placement, goal — the more context, the better."
                   style={{ ...inputBase, resize: "none" }} />
               </div>
