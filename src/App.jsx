@@ -234,15 +234,17 @@ Return:
                 {loading ? "Generating…" : "Generate 3 variants →"}
               </button>
             </div>
+      
           )}
-
-          {/* ── ANALYZE FORM ── */}
-          {mode === "analyze" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-              <div>
-            <label htmlFor="copy-type" style={labelStyle}>Format</label>
-
-            <select 
+{/* ── ANALYZE FORM ── */}
+{mode === "analyze" && (
+  <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+    <div>
+      {/* 1. Add htmlFor="copy-type" here */}
+      <label htmlFor="copy-type" style={labelStyle}>Format</label>
+      
+      {/* 2. Add id="copy-type" here */}
+      <select 
         id="copy-type" 
         className="cl-input" 
         value={analyzeFormat} 
@@ -254,7 +256,7 @@ Return:
     </div>
   </div>
 )}
-  
+        
               <div>
                 <label style={labelStyle}>Copy to Analyze</label>
                 <textarea className="cl-input" value={inputCopy} onChange={e => setInputCopy(e.target.value)} rows={4}
