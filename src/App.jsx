@@ -137,8 +137,9 @@ export default function CopyLab() {
         : "";
       const usr = `Write 3 distinct variants of ${copyType.replace(/_/g, " ")} copy for: "${brief}"
 Tone: ${tones.length ? tones.join(", ") : "balanced and on-brand"}${keywordBlock}
+For each variant, also score (0-100): "tone_match" (how strongly the variant reflects the requested tone${tones.length ? ` — ${tones.join(", ")}` : ""})${generateKeyword.trim() ? ', "keyword_use" (how naturally and effectively the target keyword is used, 0 if not used at all)' : ""}.
 Return:
-{"variants":[{"copy":"","angle":"2-3 word label","rationale":"1-2 sentences","strength":"1 sentence","watch_out":"1 honest limitation"${generateKeyword.trim() ? ',"keyword_fit":"1 sentence on whether/how the keyword was used, or why it was skipped"' : ""}}]}`;
+{"variants":[{"copy":"","angle":"2-3 word label","rationale":"1-2 sentences","strength":"1 sentence","watch_out":"1 honest limitation","tone_match":0${generateKeyword.trim() ? ',"keyword_use":0' : ""}${generateKeyword.trim() ? ',"keyword_fit":"1 sentence on whether/how the keyword was used, or why it was skipped"' : ""}}]}`;
       const data = await callClaude(sys, usr);
       setResult({ type: "generate", ...data });
       setSelectedV(0);
@@ -159,7 +160,7 @@ Return:
       const usr = `Review this ${analyzeFormat.replace(/_/g, " ")}: "${inputCopy}"
 ${context ? `Context: ${context}` : ""}${seoBlock}
 Return:
-{"verdict":"one sharp sentence","overall_score":78,"scores":{"clarity":{"score":80,"note":""},"brand_voice":{"score":75,"note":""},"audience_fit":{"score":82,"note":""},"accuracy":{"score":85,"note":""},"structure":{"score":70,"note":""}${targetKeyword.trim() ? ',"keyword_usage":{"score":0,"note":""},"length_fit":{"score":0,"note":""}' : ""}},"flags":["problem 1"],"improvements":["suggestion 1"],"rewrite":"sharper version or null"}`;
+{"verdict":"one sharp sentence","overall_score":78,"scores":{"clarity":{"score":80,"note":""},"tone_of_voice":{"score":75,"note":""},"audience_fit":{"score":82,"note":""},"accuracy":{"score":85,"note":""},"structure":{"score":70,"note":""}${targetKeyword.trim() ? ',"keyword_usage":{"score":0,"note":""},"length_fit":{"score":0,"note":""}' : ""}},"flags":["problem 1"],"improvements":["suggestion 1"],"rewrite":"sharper version or null"}`;
       const data = await callClaude(sys, usr);
       setResult({ type: "analyze", ...data });
     } catch {
@@ -345,6 +346,23 @@ Return:
                         {copied === "main" ? "✓" : "Copy"}
                       </button>
                     </div>
+
+                    {(typeof v.tone_match === "number" || typeof v.keyword_use === "number") && (
+                      <div style={{ display: "flex", gap: 8 }}>
+                        {typeof v.tone_match === "number" && (
+                          <div style={{ flex: 1, padding: "10px 12px", background: "#FFF", border: "1px solid #DDD9D0", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9A9590" }}>Tone Match</span>
+                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 500, color: scoreColor(v.tone_match) }}>{v.tone_match}%</span>
+                          </div>
+                        )}
+                        {typeof v.keyword_use === "number" && (
+                          <div style={{ flex: 1, padding: "10px 12px", background: "#FFF", border: "1px solid #DDD9D0", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9A9590" }}>Keyword Use</span>
+                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 500, color: scoreColor(v.keyword_use) }}>{v.keyword_use}%</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                       <div style={{ padding: "12px 13px", background: "#F0FBF5", border: "1px solid #1E7A4820", borderRadius: 8 }}>
