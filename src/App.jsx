@@ -216,6 +216,7 @@ Return:
               </div>
 
               <div>
+                <label style={labelStyle}>Brief</label>
                 <label style={labelStyle} htmlFor="copy-details">Brief</label>
                 <textarea className="cl-input" id="copy-details" name="copy-details" value={brief} onChange={e => setBrief(e.target.value)} rows={5}
                   placeholder="What are you writing? Product, feature, campaign moment, placement, goal — the more context, the better."
@@ -234,29 +235,19 @@ Return:
                 {loading ? "Generating…" : "Generate 3 variants →"}
               </button>
             </div>
-      
           )}
-{/* ── ANALYZE FORM ── */}
-{mode === "analyze" && (
-  <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-    <div>
-      {/* 1. Add htmlFor="copy-type" here */}
-      <label htmlFor="copy-type" style={labelStyle}>Format</label>
-      
-      {/* 2. Add id="copy-type" here */}
-      <select 
-        id="copy-type" 
-        className="cl-input" 
-        value={analyzeFormat} 
-        onChange={e => setAnalyzeFormat(e.target.value)}
-        style={{ ...inputBase, cursor: "pointer" }}
-      >
-        {COPY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-      </select>
-    </div>
-  </div>
-)}
-        
+
+          {/* ── ANALYZE FORM ── */}
+          {mode === "analyze" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+              <div>
+                <label style={labelStyle}>Format</label>
+                <select className="cl-input" value={analyzeFormat} onChange={e => setAnalyzeFormat(e.target.value)}
+                  style={{ ...inputBase, cursor: "pointer" }}>
+                  {COPY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+
               <div>
                 <label style={labelStyle}>Copy to Analyze</label>
                 <textarea className="cl-input" value={inputCopy} onChange={e => setInputCopy(e.target.value)} rows={4}
