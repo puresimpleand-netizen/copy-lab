@@ -8,3 +8,13 @@ createRoot(document.getElementById('root')).render(
     <App />
   </StrictMode>,
 )
+// This runs every time the page loads
+window.addEventListener('load', () => {
+  const select = document.querySelector('select.cl-input');
+  const label = document.querySelector('label');
+  if (select && label) {
+    select.id = 'copy-type';
+    select.name = 'copy-type';
+    label.setAttribute('for', 'copy-type');
+  }
+});
