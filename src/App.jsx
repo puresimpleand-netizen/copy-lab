@@ -116,6 +116,7 @@ export default function CopyLab() {
   const [inputCopy, setInputCopy] = useState("");
   const [context, setContext] = useState("");
   const [analyzeFormat, setAnalyzeFormat] = useState("headline");
+  const [targetKeyword, setTargetKeyword] = useState("");
 
   const toggleTone = t => setTones(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
 
@@ -147,11 +148,14 @@ Return:
     if (!inputCopy.trim()) return;
     setLoading(true); setError(null); setResult(null);
     try {
-      const sys = `You are a senior UX copy strategist. Be precise and direct. Return ONLY valid JSON. No markdown, no preamble.`;
+      const sys = `You are a senior UX copy strategist${targetKeyword.trim() ? " and SEO copy specialist" : ""}. Be precise and direct. Return ONLY valid JSON. No markdown, no preamble.`;
+      const seoBlock = targetKeyword.trim()
+        ? `\nTarget keyword: "${targetKeyword.trim()}"\nAlso evaluate SEO and add these two entries inside "scores": "keyword_usage" (score + note on whether the keyword appears naturally, in a strong position, and isn't stuffed) and "length_fit" (score + note on whether the character count suits ${analyzeFormat.replace(/_/g, " ")} for search/display purposes, e.g. ~50-60 chars for a title, ~150-160 for a meta description, stating the actual character count in the note).`
+        : "";
       const usr = `Review this ${analyzeFormat.replace(/_/g, " ")}: "${inputCopy}"
-${context ? `Context: ${context}` : ""}
+${context ? `Context: ${context}` : ""}${seoBlock}
 Return:
-{"verdict":"one sharp sentence","overall_score":78,"scores":{"clarity":{"score":80,"note":""},"brand_voice":{"score":75,"note":""},"audience_fit":{"score":82,"note":""},"accuracy":{"score":85,"note":""},"structure":{"score":70,"note":""}},"flags":["problem 1"],"improvements":["suggestion 1"],"rewrite":"sharper version or null"}`;
+{"verdict":"one sharp sentence","overall_score":78,"scores":{"clarity":{"score":80,"note":""},"brand_voice":{"score":75,"note":""},"audience_fit":{"score":82,"note":""},"accuracy":{"score":85,"note":""},"structure":{"score":70,"note":""}${targetKeyword.trim() ? ',"keyword_usage":{"score":0,"note":""},"length_fit":{"score":0,"note":""}' : ""}},"flags":["problem 1"],"improvements":["suggestion 1"],"rewrite":"sharper version or null"}`;
       const data = await callClaude(sys, usr);
       setResult({ type: "analyze", ...data });
     } catch {
@@ -252,6 +256,13 @@ Return:
                 <textarea className="cl-input" value={inputCopy} onChange={e => setInputCopy(e.target.value)} rows={4}
                   placeholder="Paste the copy here."
                   style={{ ...inputBase, resize: "none" }} />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Target Keyword <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, adds SEO scoring)</span></label>
+                <input className="cl-input" value={targetKeyword} onChange={e => setTargetKeyword(e.target.value)}
+                  placeholder="e.g. wireless earbuds, home security camera…"
+                  style={inputBase} />
               </div>
 
               <div>
