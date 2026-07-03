@@ -240,19 +240,21 @@ Return:
           {mode === "analyze" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               <div>
-                <label htmlFor="copy-type" style={labelStyle}>Format</label>
-                     <select 
+            <label htmlFor="copy-type" style={labelStyle}>Format</label>
+
+            <select 
         id="copy-type" 
         className="cl-input" 
         value={analyzeFormat} 
         onChange={e => setAnalyzeFormat(e.target.value)}
         style={{ ...inputBase, cursor: "pointer" }}
       >
-                         {COPY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+        {COPY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
       </select>
     </div>
   </div>
 )}
+  
               <div>
                 <label style={labelStyle}>Copy to Analyze</label>
                 <textarea className="cl-input" value={inputCopy} onChange={e => setInputCopy(e.target.value)} rows={4}
