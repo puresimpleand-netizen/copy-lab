@@ -85,6 +85,30 @@ function Pill({ type, children }) {
   );
 }
 
+function SeoRankingList({ items }) {
+  if (!items?.length) return null;
+  const volColor = v => v === "High" ? "#1E7A48" : v === "Medium" ? "#C07820" : "#9A9590";
+  return (
+    <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px" }}>
+      <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590", marginBottom: 12 }}>Most-Searched SEO Keywords</p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {items.map((it, i) => (
+          <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#B0ABA4", flexShrink: 0, paddingTop: 1 }}>{String(i + 1).padStart(2, "0")}</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: "#1C1915" }}>{it.keyword}</span>
+                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, fontWeight: 500, color: volColor(it.volume), background: volColor(it.volume) + "15", border: `1px solid ${volColor(it.volume)}30`, borderRadius: 3, padding: "1px 6px", textTransform: "uppercase", letterSpacing: "0.04em" }}>{it.volume}</span>
+              </div>
+              {it.note && <p style={{ fontSize: 12, color: "#8A8580", lineHeight: 1.5, margin: 0 }}>{it.note}</p>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const inputBase = {
   width: "100%", padding: "13px 14px",
   background: "#F9F7F3", border: "1.5px solid #E0DBD2",
@@ -100,6 +124,33 @@ const labelStyle = {
 };
 
 const scoreColor = s => s >= 80 ? "#1E7A48" : s >= 60 ? "#C07820" : "#C0392B";
+
+function highlightText(text, keywordTerms = [], featureTerms = []) {
+  if (!text) return text;
+  const terms = [
+    ...keywordTerms.filter(Boolean).map(t => ({ term: t.trim(), type: "keyword" })),
+    ...featureTerms.filter(Boolean).map(t => ({ term: t.trim(), type: "feature" })),
+  ].filter(t => t.term.length > 1);
+  if (!terms.length) return text;
+
+  const sorted = [...terms].sort((a, b) => b.term.length - a.term.length);
+  const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`(${sorted.map(t => escape(t.term)).join("|")})`, "gi");
+  const parts = text.split(pattern);
+
+  return parts.map((part, i) => {
+    const match = sorted.find(t => t.term.toLowerCase() === part.toLowerCase());
+    if (!match) return part;
+    const isKeyword = match.type === "keyword";
+    return (
+      <mark key={i} style={{
+        background: isKeyword ? "#DFF5E8" : "#E4EBFF",
+        color: isKeyword ? "#1A5C38" : "#2A3D80",
+        padding: "1px 3px", borderRadius: 3, fontWeight: 600,
+      }}>{part}</mark>
+    );
+  });
+}
 const scoreLabel = s => s >= 80 ? "Strong" : s >= 65 ? "Needs work" : "Weak";
 
 export default function CopyLab() {
@@ -115,6 +166,7 @@ export default function CopyLab() {
   const [tones, setTones] = useState([]);
   const [generateKeyword, setGenerateKeyword] = useState("");
   const [generateAudience, setGenerateAudience] = useState("");
+  const [generateFeatures, setGenerateFeatures] = useState("");
 
   const [inputCopy, setInputCopy] = useState("");
   const [context, setContext] = useState("");
@@ -145,12 +197,17 @@ export default function CopyLab() {
       const keywordBlock = generateKeyword.trim()
         ? `\nTarget keyword: "${generateKeyword.trim()}" — work it in naturally in at least one variant where it fits the format and doesn't feel forced. Don't stuff it if it hurts readability.`
         : "";
+      const featuresBlock = generateFeatures.trim()
+        ? `\nFeatures/details to highlight where relevant: ${generateFeatures.trim()}`
+        : "";
       const usr = `Write 3 distinct variants of ${copyType.replace(/_/g, " ")} copy for: "${brief}"
-Tone: ${tones.length ? tones.join(", ") : "balanced and on-brand"}${generateAudience.trim() ? `\nTarget audience: ${generateAudience.trim()} — write with this audience's needs, vocabulary, and expectations in mind.` : ""}${keywordBlock}
+Tone: ${tones.length ? tones.join(", ") : "balanced and on-brand"}${generateAudience.trim() ? `\nTarget audience: ${generateAudience.trim()} — write with this audience's needs, vocabulary, and expectations in mind.` : ""}${keywordBlock}${featuresBlock}
 For each variant, also score (0-100): "tone_match" (how strongly the variant reflects the requested tone${tones.length ? ` — ${tones.join(", ")}` : ""})${generateKeyword.trim() ? ', "keyword_use" (how naturally and effectively the target keyword is used, 0 if not used at all)' : ""}.
+Also write a "narrative": 2-3 sentences on the creative through-line connecting these three variants — what story or positioning idea ties them together.
+Also suggest a "seo_keyword_ranking": the 5 most commonly searched keywords/phrases relevant to this brief, ranked highest search interest first, each with an estimated "volume" of "High", "Medium", or "Low" and a short "note" on why it's relevant.
 Return:
-{"variants":[{"copy":"","angle":"2-3 word label","rationale":"1-2 sentences","strength":"1 sentence","watch_out":"1 honest limitation","tone_match":0${generateKeyword.trim() ? ',"keyword_use":0' : ""}${generateKeyword.trim() ? ',"keyword_fit":"1 sentence on whether/how the keyword was used, or why it was skipped"' : ""}}]}`;
-      const data = await callClaude(sys, usr);
+{"variants":[{"copy":"","angle":"2-3 word label","rationale":"1-2 sentences","strength":"1 sentence","watch_out":"1 honest limitation","tone_match":0${generateKeyword.trim() ? ',"keyword_use":0' : ""}${generateKeyword.trim() ? ',"keyword_fit":"1 sentence on whether/how the keyword was used, or why it was skipped"' : ""}}],"narrative":"","seo_keyword_ranking":[{"keyword":"","volume":"High","note":""}]}`;
+      const data = await callClaude(sys, usr, 2800);
       setResult({ type: "generate", ...data });
       setSelectedV(0);
     } catch {
@@ -169,9 +226,10 @@ Return:
         : "";
       const usr = `Review this ${analyzeFormat.replace(/_/g, " ")}: "${inputCopy}"
 ${context ? `Context: ${context}` : ""}${analyzeAudience.trim() ? `\nTarget audience: ${analyzeAudience.trim()} — score "audience_fit" specifically against how well this copy speaks to this audience (their needs, vocabulary, expectations), not a generic audience.` : ""}${seoBlock}
+Also suggest a "seo_keyword_ranking": the 5 most commonly searched keywords/phrases relevant to this copy's topic, ranked highest search interest first, each with an estimated "volume" of "High", "Medium", or "Low" and a short "note" on why it's relevant.
 Return:
-{"verdict":"one sharp sentence","overall_score":78,"scores":{"clarity":{"score":80,"note":""},"tone_of_voice":{"score":75,"note":""},"audience_fit":{"score":82,"note":""},"accuracy":{"score":85,"note":""},"structure":{"score":70,"note":""}${targetKeyword.trim() ? ',"keyword_usage":{"score":0,"note":""},"length_fit":{"score":0,"note":""}' : ""}},"flags":["problem 1"],"improvements":["suggestion 1"],"rewrite":"sharper version or null"}`;
-      const data = await callClaude(sys, usr);
+{"verdict":"one sharp sentence","overall_score":78,"scores":{"clarity":{"score":80,"note":""},"tone_of_voice":{"score":75,"note":""},"audience_fit":{"score":82,"note":""},"accuracy":{"score":85,"note":""},"structure":{"score":70,"note":""}${targetKeyword.trim() ? ',"keyword_usage":{"score":0,"note":""},"length_fit":{"score":0,"note":""}' : ""}},"flags":["problem 1"],"improvements":["suggestion 1"],"rewrite":"sharper version or null","seo_keyword_ranking":[{"keyword":"","volume":"High","note":""}]}`;
+      const data = await callClaude(sys, usr, 2800);
       setResult({ type: "analyze", ...data });
     } catch {
       setError("Analysis failed. Try again.");
@@ -203,10 +261,11 @@ Return:
       const usr = `${task}${keywordBlock}${featuresBlock}${audienceBlock}
 For each FAQ, score "directness" (0-100: does the first sentence of the answer fully resolve the question with no throat-clearing).
 Also identify which of the target keywords (if any) were actually used across the FAQs, and which features/details were highlighted.
+Also suggest a "seo_keyword_ranking": the 5 most commonly searched keywords/phrases relevant to this topic, ranked highest search interest first, each with an estimated "volume" of "High", "Medium", or "Low" and a short "note" on why it's relevant.
 Return:
-{"faqs":[{"question":"phrased as a real user would ask","answer":"leads with the direct answer, then supporting detail","directness":0}],"keywords_used":["keyword actually used"],"features_highlighted":["feature actually mentioned"],"aeo_notes":"1-2 sentences of overall guidance or gaps to address"}`;
+{"faqs":[{"question":"phrased as a real user would ask","answer":"leads with the direct answer, then supporting detail","directness":0}],"keywords_used":["keyword actually used"],"features_highlighted":["feature actually mentioned"],"aeo_notes":"1-2 sentences of overall guidance or gaps to address","seo_keyword_ranking":[{"keyword":"","volume":"High","note":""}]}`;
 
-      const data = await callClaude(sys, usr, 3000);
+      const data = await callClaude(sys, usr, 3400);
       setResult({ type: "aeo", ...data });
     } catch {
       setError("AEO revision failed. Try again.");
@@ -233,12 +292,17 @@ Return:
         .cl-dot { animation: blink 1.2s ease-in-out infinite; }
         .cl-vtab { transition: background 0.15s, color 0.15s; }
         .cl-vtab.sel { background: #1C1915 !important; color: #F5F2EC !important; }
+        .cl-shell * { text-align: left; }
+        @media (max-width: 860px) {
+          .cl-shell { flex-direction: column !important; }
+          .cl-form-col { width: 100% !important; position: static !important; }
+        }
       `}</style>
 
-      <div style={{ minHeight: "100vh", background: "#F2EFE9", fontFamily: "'DM Sans', sans-serif", display: "flex", flexDirection: "column", maxWidth: 480, margin: "0 auto" }}>
+      <div style={{ minHeight: "100vh", background: "#F2EFE9", fontFamily: "'DM Sans', sans-serif" }}>
 
         {/* Header */}
-        <header style={{ height: 56, padding: "0 20px", display: "flex", alignItems: "center", justifyContent: "space-between", borderBottom: "1.5px solid #DDD9D0", background: "#F2EFE9", position: "sticky", top: 0, zIndex: 10 }}>
+        <header style={{ height: 56, padding: "0 28px", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 24, borderBottom: "1.5px solid #DDD9D0", background: "#F2EFE9", position: "sticky", top: 0, zIndex: 10 }}>
           <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 18, color: "#1C1915", letterSpacing: "-0.5px" }}>
             copy/lab
             <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: "#C8401A", fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", padding: "2px 6px", border: "1px solid #C8401A30", borderRadius: 3, background: "#FFF0EC", marginLeft: 8 }}>beta</span>
@@ -255,8 +319,10 @@ Return:
           </div>
         </header>
 
-        {/* Scrollable body */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "20px 20px 40px" }}>
+        {/* Two-column body: form left, results right */}
+        <div className="cl-shell" style={{ display: "flex", alignItems: "flex-start", gap: 32, maxWidth: 1100, margin: 0, padding: "28px 28px 60px" }}>
+
+          <div className="cl-form-col" style={{ width: 360, flexShrink: 0, position: "sticky", top: 76 }}>
 
           {/* ── GENERATE FORM ── */}
           {mode === "generate" && (
@@ -294,6 +360,13 @@ Return:
                 <label style={labelStyle}>Target Keyword <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, works it in naturally)</span></label>
                 <input className="cl-input" value={generateKeyword} onChange={e => setGenerateKeyword(e.target.value)}
                   placeholder="e.g. wireless earbuds, home security camera…"
+                  style={inputBase} />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Features to Highlight <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, comma-separated)</span></label>
+                <input className="cl-input" value={generateFeatures} onChange={e => setGenerateFeatures(e.target.value)}
+                  placeholder="e.g. 30-hour battery, IPX7 rating, wireless charging"
                   style={inputBase} />
               </div>
 
@@ -410,6 +483,10 @@ Return:
             </div>
           )}
 
+          </div>
+
+          <div className="cl-results-col" style={{ flex: 1, minWidth: 0 }}>
+
           {/* ── LOADING ── */}
           {loading && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 14, padding: "40px 0" }}>
@@ -433,12 +510,21 @@ Return:
 
           {/* ── GENERATE RESULTS ── */}
           {!loading && result?.type === "generate" && (
-            <div className="cl-fade" style={{ marginTop: 28 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-                <h2 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 15, color: "#1C1915", letterSpacing: "-0.3px" }}>3 Variants</h2>
-                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: "#9A9590", letterSpacing: "0.06em", textTransform: "uppercase" }}>
-                  {COPY_TYPES.find(t => t.value === copyType)?.label}
-                </span>
+            <div className="cl-fade" style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 16 }}>
+              <div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                  <h2 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 15, color: "#1C1915", letterSpacing: "-0.3px" }}>3 Variants</h2>
+                  <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: "#9A9590", letterSpacing: "0.06em", textTransform: "uppercase" }}>
+                    {COPY_TYPES.find(t => t.value === copyType)?.label}
+                  </span>
+                </div>
+
+                {result.narrative && (
+                  <div style={{ padding: "14px 16px", background: "#FFF8F0", border: "1px solid #C0782020", borderRadius: 8, marginBottom: 16 }}>
+                    <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#C07820", marginBottom: 6 }}>Narrative</p>
+                    <p style={{ fontSize: 13, color: "#7A4E10", lineHeight: 1.6 }}>{result.narrative}</p>
+                  </div>
+                )}
               </div>
 
               {/* Tabs */}
@@ -458,7 +544,7 @@ Return:
                   <div key={selectedV} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "20px 16px 16px", position: "relative" }}>
                       <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 22, color: "#1C1915", lineHeight: 1.25, letterSpacing: "-0.4px", paddingRight: 52 }}>
-                        "{v.copy}"
+                        "{highlightText(v.copy, generateKeyword.split(","), generateFeatures.split(","))}"
                       </p>
                       <button className="cl-copy" onClick={() => handleCopy(v.copy, "main")}
                         style={{ position: "absolute", top: 14, right: 12, padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === "main" ? "#1E7A48" : "#9A9590" }}>
@@ -508,6 +594,15 @@ Return:
                   </div>
                 );
               })()}
+
+              {(generateKeyword.trim() || generateFeatures.trim()) && (
+                <div style={{ display: "flex", gap: 14, fontSize: 11, color: "#9A9590" }}>
+                  {generateKeyword.trim() && <span><mark style={{ background: "#DFF5E8", color: "#1A5C38", padding: "1px 5px", borderRadius: 3 }}>▉</mark> Keyword</span>}
+                  {generateFeatures.trim() && <span><mark style={{ background: "#E4EBFF", color: "#2A3D80", padding: "1px 5px", borderRadius: 3 }}>▉</mark> Feature</span>}
+                </div>
+              )}
+
+              <SeoRankingList items={result.seo_keyword_ranking} />
             </div>
           )}
 
@@ -554,7 +649,7 @@ Return:
                 <div style={{ padding: "16px", background: "#FFF", border: "1.5px solid #C8401A25", borderRadius: 8, position: "relative" }}>
                   <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590", marginBottom: 10 }}>✦ Suggested rewrite</p>
                   <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 20, color: "#1C1915", lineHeight: 1.25, letterSpacing: "-0.3px", paddingRight: 52 }}>
-                    "{result.rewrite}"
+                    "{highlightText(result.rewrite, targetKeyword.split(","), [])}"
                   </p>
                   <button className="cl-copy" onClick={() => handleCopy(result.rewrite, "rewrite")}
                     style={{ position: "absolute", top: 14, right: 14, padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === "rewrite" ? "#1E7A48" : "#9A9590" }}>
@@ -562,6 +657,8 @@ Return:
                   </button>
                 </div>
               )}
+
+              <SeoRankingList items={result.seo_keyword_ranking} />
             </div>
           )}
 
@@ -591,7 +688,7 @@ Return:
                           </span>
                         )}
                       </div>
-                      <p style={{ fontSize: 13, color: "#3A3730", lineHeight: 1.6, marginBottom: 10 }}>{f.answer}</p>
+                      <p style={{ fontSize: 13, color: "#3A3730", lineHeight: 1.6, marginBottom: 10 }}>{highlightText(f.answer, aeoKeywords.split(","), aeoFeatures.split(","))}</p>
                       <button className="cl-copy" onClick={() => handleCopy(`${f.question}\n${f.answer}`, `faq-${i}`)}
                         style={{ padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === `faq-${i}` ? "#1E7A48" : "#9A9590" }}>
                         {copied === `faq-${i}` ? "✓ Copied" : "Copy Q&A"}
@@ -622,8 +719,19 @@ Return:
                   </div>
                 </div>
               )}
+
+              <SeoRankingList items={result.seo_keyword_ranking} />
             </div>
           )}
+
+          {!loading && !error && !result && (
+            <div style={{ padding: "60px 20px", textAlign: "left", color: "#B0ABA4" }}>
+              <p style={{ fontSize: 13, lineHeight: 1.6 }}>Fill in the form on the left and run it — results will show up here.</p>
+            </div>
+          )}
+
+          </div>
+
         </div>
       </div>
     </>
