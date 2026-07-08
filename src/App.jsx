@@ -85,30 +85,6 @@ function Pill({ type, children }) {
   );
 }
 
-function SeoRankingList({ items }) {
-  if (!items?.length) return null;
-  const volColor = v => v === "High" ? "#1E7A48" : v === "Medium" ? "#C07820" : "#9A9590";
-  return (
-    <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px" }}>
-      <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590", marginBottom: 12 }}>Most-Searched SEO Keywords</p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {items.map((it, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
-            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, color: "#B0ABA4", flexShrink: 0, paddingTop: 1 }}>{String(i + 1).padStart(2, "0")}</span>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: "#1C1915" }}>{it.keyword}</span>
-                <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, fontWeight: 500, color: volColor(it.volume), background: volColor(it.volume) + "15", border: `1px solid ${volColor(it.volume)}30`, borderRadius: 3, padding: "1px 6px", textTransform: "uppercase", letterSpacing: "0.04em" }}>{it.volume}</span>
-              </div>
-              {it.note && <p style={{ fontSize: 12, color: "#8A8580", lineHeight: 1.5, margin: 0 }}>{it.note}</p>}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 const inputBase = {
   width: "100%", padding: "13px 14px",
   background: "#F9F7F3", border: "1.5px solid #E0DBD2",
@@ -193,7 +169,7 @@ export default function CopyLab() {
     if (!brief.trim()) return;
     setLoading(true); setError(null); setResult(null);
     try {
-      const sys = `You are a senior UX copywriter and brand strategist${generateKeyword.trim() ? " with strong SEO instincts" : ""}. ${SENTENCE_CASE_RULE} Return ONLY valid JSON. No markdown, no preamble.`;
+      const sys = `You are a senior UX copywriter and brand strategist with strong SEO instincts. ${SENTENCE_CASE_RULE} Return ONLY valid JSON. No markdown, no preamble.`;
       const keywordBlock = generateKeyword.trim()
         ? `\nTarget keyword: "${generateKeyword.trim()}" — work it in naturally in at least one variant where it fits the format and doesn't feel forced. Don't stuff it if it hurts readability.`
         : "";
@@ -202,12 +178,13 @@ export default function CopyLab() {
         : "";
       const usr = `Write 3 distinct variants of ${copyType.replace(/_/g, " ")} copy for: "${brief}"
 Tone: ${tones.length ? tones.join(", ") : "balanced and on-brand"}${generateAudience.trim() ? `\nTarget audience: ${generateAudience.trim()} — write with this audience's needs, vocabulary, and expectations in mind.` : ""}${keywordBlock}${featuresBlock}
-For each variant, also score (0-100): "tone_match" (how strongly the variant reflects the requested tone${tones.length ? ` — ${tones.join(", ")}` : ""})${generateKeyword.trim() ? ', "keyword_use" (how naturally and effectively the target keyword is used, 0 if not used at all)' : ""}.
+
+As you write the 3 variants, naturally work in the target keyword and features where relevant, without hurting readability or feeling stuffed.
+For each variant, also score (0-100): "tone_match" (how strongly the variant reflects the requested tone${tones.length ? ` — ${tones.join(", ")}` : ""})${generateKeyword.trim() ? ', "keyword_use" (how naturally and effectively the target keyword is used, 0 if not used at all)' : ""}, and report "keywords_used" (exact substrings from the target keyword that literally appear in this variant's copy — omit if not used) and "features_used" (exact substrings from the features list that literally appear in this variant's copy — omit any that don't).
 Also write a "narrative": 2-3 sentences on the creative through-line connecting these three variants — what story or positioning idea ties them together.
-Also suggest a "seo_keyword_ranking": the 5 most commonly searched keywords/phrases relevant to this brief, ranked highest search interest first, each with an estimated "volume" of "High", "Medium", or "Low" and a short "note" on why it's relevant.
 Return:
-{"variants":[{"copy":"","angle":"2-3 word label","rationale":"1-2 sentences","strength":"1 sentence","watch_out":"1 honest limitation","tone_match":0${generateKeyword.trim() ? ',"keyword_use":0' : ""}${generateKeyword.trim() ? ',"keyword_fit":"1 sentence on whether/how the keyword was used, or why it was skipped"' : ""}}],"narrative":"","seo_keyword_ranking":[{"keyword":"","volume":"High","note":""}]}`;
-      const data = await callClaude(sys, usr, 2800);
+{"variants":[{"copy":"","angle":"2-3 word label","rationale":"1-2 sentences","strength":"1 sentence","watch_out":"1 honest limitation","tone_match":0${generateKeyword.trim() ? ',"keyword_use":0' : ""}${generateKeyword.trim() ? ',"keyword_fit":"1 sentence on whether/how the keyword was used, or why it was skipped"' : ""},"keywords_used":[],"features_used":[]}],"narrative":""}`;
+      const data = await callClaude(sys, usr, 3000);
       setResult({ type: "generate", ...data });
       setSelectedV(0);
     } catch {
@@ -226,10 +203,9 @@ Return:
         : "";
       const usr = `Review this ${analyzeFormat.replace(/_/g, " ")}: "${inputCopy}"
 ${context ? `Context: ${context}` : ""}${analyzeAudience.trim() ? `\nTarget audience: ${analyzeAudience.trim()} — score "audience_fit" specifically against how well this copy speaks to this audience (their needs, vocabulary, expectations), not a generic audience.` : ""}${seoBlock}
-Also suggest a "seo_keyword_ranking": the 5 most commonly searched keywords/phrases relevant to this copy's topic, ranked highest search interest first, each with an estimated "volume" of "High", "Medium", or "Low" and a short "note" on why it's relevant.
 Return:
-{"verdict":"one sharp sentence","overall_score":78,"scores":{"clarity":{"score":80,"note":""},"tone_of_voice":{"score":75,"note":""},"audience_fit":{"score":82,"note":""},"accuracy":{"score":85,"note":""},"structure":{"score":70,"note":""}${targetKeyword.trim() ? ',"keyword_usage":{"score":0,"note":""},"length_fit":{"score":0,"note":""}' : ""}},"flags":["problem 1"],"improvements":["suggestion 1"],"rewrite":"sharper version or null","seo_keyword_ranking":[{"keyword":"","volume":"High","note":""}]}`;
-      const data = await callClaude(sys, usr, 2800);
+{"verdict":"one sharp sentence","overall_score":78,"scores":{"clarity":{"score":80,"note":""},"tone_of_voice":{"score":75,"note":""},"audience_fit":{"score":82,"note":""},"accuracy":{"score":85,"note":""},"structure":{"score":70,"note":""}${targetKeyword.trim() ? ',"keyword_usage":{"score":0,"note":""},"length_fit":{"score":0,"note":""}' : ""}},"flags":["problem 1"],"improvements":["suggestion 1"],"rewrite":"sharper version or null"}`;
+      const data = await callClaude(sys, usr, 2500);
       setResult({ type: "analyze", ...data });
     } catch {
       setError("Analysis failed. Try again.");
@@ -261,9 +237,8 @@ Return:
       const usr = `${task}${keywordBlock}${featuresBlock}${audienceBlock}
 For each FAQ, score "directness" (0-100: does the first sentence of the answer fully resolve the question with no throat-clearing).
 Also identify which of the target keywords (if any) were actually used across the FAQs, and which features/details were highlighted.
-Also suggest a "seo_keyword_ranking": the 5 most commonly searched keywords/phrases relevant to this topic, ranked highest search interest first, each with an estimated "volume" of "High", "Medium", or "Low" and a short "note" on why it's relevant.
 Return:
-{"faqs":[{"question":"phrased as a real user would ask","answer":"leads with the direct answer, then supporting detail","directness":0}],"keywords_used":["keyword actually used"],"features_highlighted":["feature actually mentioned"],"aeo_notes":"1-2 sentences of overall guidance or gaps to address","seo_keyword_ranking":[{"keyword":"","volume":"High","note":""}]}`;
+{"faqs":[{"question":"phrased as a real user would ask","answer":"leads with the direct answer, then supporting detail","directness":0}],"keywords_used":["keyword actually used"],"features_highlighted":["feature actually mentioned"],"aeo_notes":"1-2 sentences of overall guidance or gaps to address"}`;
 
       const data = await callClaude(sys, usr, 3400);
       setResult({ type: "aeo", ...data });
@@ -544,7 +519,7 @@ Return:
                   <div key={selectedV} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "20px 16px 16px", position: "relative" }}>
                       <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 22, color: "#1C1915", lineHeight: 1.25, letterSpacing: "-0.4px", paddingRight: 52 }}>
-                        "{highlightText(v.copy, generateKeyword.split(","), generateFeatures.split(","))}"
+                        "{highlightText(v.copy, v.keywords_used || [], v.features_used || [])}"
                       </p>
                       <button className="cl-copy" onClick={() => handleCopy(v.copy, "main")}
                         style={{ position: "absolute", top: 14, right: 12, padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === "main" ? "#1E7A48" : "#9A9590" }}>
@@ -595,14 +570,13 @@ Return:
                 );
               })()}
 
-              {(generateKeyword.trim() || generateFeatures.trim()) && (
+              {(result.variants?.some(v => v.keywords_used?.length) || result.variants?.some(v => v.features_used?.length)) && (
                 <div style={{ display: "flex", gap: 14, fontSize: 11, color: "#9A9590" }}>
-                  {generateKeyword.trim() && <span><mark style={{ background: "#DFF5E8", color: "#1A5C38", padding: "1px 5px", borderRadius: 3 }}>▉</mark> Keyword</span>}
-                  {generateFeatures.trim() && <span><mark style={{ background: "#E4EBFF", color: "#2A3D80", padding: "1px 5px", borderRadius: 3 }}>▉</mark> Feature</span>}
+                  {result.variants?.some(v => v.keywords_used?.length) && <span><mark style={{ background: "#DFF5E8", color: "#1A5C38", padding: "1px 5px", borderRadius: 3 }}>▉</mark> Keyword</span>}
+                  {result.variants?.some(v => v.features_used?.length) && <span><mark style={{ background: "#E4EBFF", color: "#2A3D80", padding: "1px 5px", borderRadius: 3 }}>▉</mark> Feature</span>}
                 </div>
               )}
 
-              <SeoRankingList items={result.seo_keyword_ranking} />
             </div>
           )}
 
@@ -658,7 +632,6 @@ Return:
                 </div>
               )}
 
-              <SeoRankingList items={result.seo_keyword_ranking} />
             </div>
           )}
 
@@ -720,7 +693,6 @@ Return:
                 </div>
               )}
 
-              <SeoRankingList items={result.seo_keyword_ranking} />
             </div>
           )}
 
