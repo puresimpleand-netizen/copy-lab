@@ -20,8 +20,31 @@ const TONE_TAGS = [
 ];
 
 const SENTENCE_CASE_RULE = "Grammar rule: use sentence case for all copy — capitalize only the first word and proper nouns, never Title Case.";
+const TONE_VOICE_INSTRUCTION = `Also assess "tone_voice_breakdown" across four industry-standard tone dimensions (Nielsen Norman Group's four dimensions of tone of voice). For each, give a "percent" (0-100) placing the copy on that scale, and a one-sentence "note" explaining why:
+- formality: 0 = Formal, 100 = Casual
+- humor: 0 = Serious, 100 = Funny
+- respectfulness: 0 = Respectful, 100 = Irreverent
+- enthusiasm: 0 = Matter-of-fact, 100 = Enthusiastic`;
+const TONE_VOICE_SCHEMA = `"tone_voice_breakdown":{"formality":{"percent":0,"note":""},"humor":{"percent":0,"note":""},"respectfulness":{"percent":0,"note":""},"enthusiasm":{"percent":0,"note":""}}`;
 
 const API_URL = "/api/generate";
+const TRENDS_API_URL = "/api/trends";
+
+async function fetchTrendingKeywords(keyword) {
+  if (!keyword || !keyword.trim()) return null;
+  try {
+    const res = await fetch(TRENDS_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ keyword: keyword.trim(), geo: "US" }),
+    });
+    const data = await res.json();
+    if (!res.ok) return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
 
 async function callClaude(systemPrompt, userPrompt, maxTokens = 2000) {
   const res = await fetch(API_URL, {
@@ -35,11 +58,22 @@ async function callClaude(systemPrompt, userPrompt, maxTokens = 2000) {
   });
   const data = await res.json();
   if (!res.ok) {
-    throw new Error(data?.error || "Request failed.");
+    throw new Error(data?.error || `Request failed (${res.status}).`);
   }
   const text = data.content?.map(b => b.text || "").join("") || "";
   const clean = text.replace(/```json\n?|```/g, "").trim();
-  return JSON.parse(clean);
+  try {
+    return JSON.parse(clean);
+  } catch {
+    throw new Error("PARSE_ERROR: the AI's response wasn't valid JSON. This usually means either the brief was too vague to work with (try adding a product name, feature, or goal) or too long and got cut off (try trimming it down). Give it another try.");
+  }
+}
+
+function describeError(e) {
+  const msg = (e && e.message) || "";
+  if (msg.startsWith("PARSE_ERROR")) return msg.replace("PARSE_ERROR: ", "");
+  if (msg) return msg;
+  return "Something went wrong. Try again in a moment.";
 }
 
 function Tag({ label, active, onClick }) {
@@ -81,6 +115,70 @@ function Pill({ type, children }) {
     <div style={{ display: "flex", gap: 8, alignItems: "flex-start", padding: "10px 13px", background: s.bg, border: `1px solid ${s.border}`, borderRadius: 8, marginBottom: 7 }}>
       <div style={{ width: 5, height: 5, borderRadius: "50%", background: s.dot, marginTop: 6, flexShrink: 0 }} />
       <p style={{ fontSize: 13, color: s.text, fontFamily: "'DM Sans', sans-serif", margin: 0, lineHeight: 1.55 }}>{children}</p>
+    </div>
+  );
+}
+
+function ToneVoicePanel({ data }) {
+  if (!data) return null;
+  const dims = [
+    { key: "formality", left: "Formal", right: "Casual" },
+    { key: "humor", left: "Serious", right: "Funny" },
+    { key: "respectfulness", left: "Respectful", right: "Irreverent" },
+    { key: "enthusiasm", left: "Matter-of-fact", right: "Enthusiastic" },
+  ];
+  const present = dims.filter(d => data[d.key]);
+  if (!present.length) return null;
+  return (
+    <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px" }}>
+      <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590", marginBottom: 16 }}>Tone &amp; Voice</p>
+      {present.map((d, idx) => {
+        const pct = Math.max(0, Math.min(100, data[d.key].percent ?? 50));
+        return (
+          <div key={d.key} style={{ marginBottom: idx === present.length - 1 ? 0 : 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 7 }}>
+              <span style={{ fontSize: 11, fontWeight: 600, color: pct < 50 ? "#1C1915" : "#B0ABA4", fontFamily: "'DM Sans', sans-serif" }}>{d.left}</span>
+              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#B0ABA4" }}>{pct}%</span>
+              <span style={{ fontSize: 11, fontWeight: 600, color: pct >= 50 ? "#1C1915" : "#B0ABA4", fontFamily: "'DM Sans', sans-serif" }}>{d.right}</span>
+            </div>
+            <div style={{ position: "relative", height: 5, background: "#E8E3DB", borderRadius: 3 }}>
+              <div style={{ position: "absolute", left: `${pct}%`, top: -3.5, width: 12, height: 12, borderRadius: "50%", background: "#C8401A", transform: "translateX(-50%)", border: "2px solid #FFF", boxShadow: "0 0 0 1px #DDD9D0" }} />
+            </div>
+            {data[d.key].note && <p style={{ fontSize: 12, color: "#8A8580", lineHeight: 1.5, marginTop: 8 }}>{data[d.key].note}</p>}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function TrendingKeywordsPanel({ keyword, data }) {
+  if (!keyword?.trim()) return null;
+  const trendsUrl = `https://trends.google.com/explore?geo=US&hl=en-US&q=${encodeURIComponent(keyword.trim())}`;
+  const rising = data?.rising || [];
+  const top = data?.top || [];
+  const list = rising.length ? rising : top;
+
+  return (
+    <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590" }}>
+          {rising.length ? "Trending Now" : "Related Searches"} <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(Google Trends)</span>
+        </p>
+        <a href={trendsUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#C8401A", fontFamily: "'DM Mono', monospace", textDecoration: "none" }}>View on Trends ↗</a>
+      </div>
+      {list.length > 0 ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {list.map((item, i) => (
+            <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 11px", background: "#F0FBF5", border: "1px solid #1E7A4820", borderRadius: 20, fontSize: 12, color: "#1A5C38" }}>
+              {item.query}
+              <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#1E7A48", opacity: 0.7 }}>{item.value}</span>
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p style={{ fontSize: 12, color: "#B0ABA4", lineHeight: 1.5 }}>Trending data unavailable right now (Google Trends is an unofficial, rate-limited source) — check the live page instead.</p>
+      )}
     </div>
   );
 }
@@ -157,6 +255,9 @@ export default function CopyLab() {
   const [aeoFeatures, setAeoFeatures] = useState("");
   const [aeoAudience, setAeoAudience] = useState("");
 
+  const [benchBrief, setBenchBrief] = useState("");
+  const [benchAudience, setBenchAudience] = useState("");
+
   const toggleTone = t => setTones(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
 
   const handleCopy = (text, id) => {
@@ -182,13 +283,17 @@ Tone: ${tones.length ? tones.join(", ") : "balanced and on-brand"}${generateAudi
 As you write the 3 variants, naturally work in the target keyword and features where relevant, without hurting readability or feeling stuffed.
 For each variant, also score (0-100): "tone_match" (how strongly the variant reflects the requested tone${tones.length ? ` — ${tones.join(", ")}` : ""})${generateKeyword.trim() ? ', "keyword_use" (how naturally and effectively the target keyword is used, 0 if not used at all)' : ""}, and report "keywords_used" (exact substrings from the target keyword that literally appear in this variant's copy — omit if not used) and "features_used" (exact substrings from the features list that literally appear in this variant's copy — omit any that don't).
 Also write a "narrative": 2-3 sentences on the creative through-line connecting these three variants — what story or positioning idea ties them together.
+${TONE_VOICE_INSTRUCTION} (assess the overall set of variants together)
 Return:
-{"variants":[{"copy":"","angle":"2-3 word label","rationale":"1-2 sentences","strength":"1 sentence","watch_out":"1 honest limitation","tone_match":0${generateKeyword.trim() ? ',"keyword_use":0' : ""}${generateKeyword.trim() ? ',"keyword_fit":"1 sentence on whether/how the keyword was used, or why it was skipped"' : ""},"keywords_used":[],"features_used":[]}],"narrative":""}`;
-      const data = await callClaude(sys, usr, 3000);
-      setResult({ type: "generate", ...data });
+{"variants":[{"copy":"","angle":"2-3 word label","rationale":"1-2 sentences","strength":"1 sentence","watch_out":"1 honest limitation","tone_match":0${generateKeyword.trim() ? ',"keyword_use":0' : ""}${generateKeyword.trim() ? ',"keyword_fit":"1 sentence on whether/how the keyword was used, or why it was skipped"' : ""},"keywords_used":[],"features_used":[]}],"narrative":"",${TONE_VOICE_SCHEMA}}`;
+      const [data, trends] = await Promise.all([
+        callClaude(sys, usr, 3400),
+        fetchTrendingKeywords(generateKeyword || brief.split(/\s+/).slice(0, 4).join(" ")),
+      ]);
+      setResult({ type: "generate", ...data, trendsKeyword: generateKeyword.trim() || brief.split(/\s+/).slice(0, 4).join(" "), trendsData: trends });
       setSelectedV(0);
-    } catch {
-      setError("Generation failed. Check your brief and try again.");
+    } catch (e) {
+      setError(describeError(e));
     }
     setLoading(false);
   };
@@ -203,12 +308,16 @@ Return:
         : "";
       const usr = `Review this ${analyzeFormat.replace(/_/g, " ")}: "${inputCopy}"
 ${context ? `Context: ${context}` : ""}${analyzeAudience.trim() ? `\nTarget audience: ${analyzeAudience.trim()} — score "audience_fit" specifically against how well this copy speaks to this audience (their needs, vocabulary, expectations), not a generic audience.` : ""}${seoBlock}
+${TONE_VOICE_INSTRUCTION}
 Return:
-{"verdict":"one sharp sentence","overall_score":78,"scores":{"clarity":{"score":80,"note":""},"tone_of_voice":{"score":75,"note":""},"audience_fit":{"score":82,"note":""},"accuracy":{"score":85,"note":""},"structure":{"score":70,"note":""}${targetKeyword.trim() ? ',"keyword_usage":{"score":0,"note":""},"length_fit":{"score":0,"note":""}' : ""}},"flags":["problem 1"],"improvements":["suggestion 1"],"rewrite":"sharper version or null"}`;
-      const data = await callClaude(sys, usr, 2500);
-      setResult({ type: "analyze", ...data });
-    } catch {
-      setError("Analysis failed. Try again.");
+{"verdict":"one sharp sentence","overall_score":78,"scores":{"clarity":{"score":80,"note":""},"tone_of_voice":{"score":75,"note":""},"audience_fit":{"score":82,"note":""},"accuracy":{"score":85,"note":""},"structure":{"score":70,"note":""}${targetKeyword.trim() ? ',"keyword_usage":{"score":0,"note":""},"length_fit":{"score":0,"note":""}' : ""}},"flags":["problem 1"],"improvements":["suggestion 1"],"rewrite":"sharper version or null",${TONE_VOICE_SCHEMA}}`;
+      const [data, trends] = await Promise.all([
+        callClaude(sys, usr, 2900),
+        fetchTrendingKeywords(targetKeyword || inputCopy.split(/\s+/).slice(0, 4).join(" ")),
+      ]);
+      setResult({ type: "analyze", ...data, trendsKeyword: targetKeyword.trim() || inputCopy.split(/\s+/).slice(0, 4).join(" "), trendsData: trends });
+    } catch (e) {
+      setError(describeError(e));
     }
     setLoading(false);
   };
@@ -240,10 +349,44 @@ Also identify which of the target keywords (if any) were actually used across th
 Return:
 {"faqs":[{"question":"phrased as a real user would ask","answer":"leads with the direct answer, then supporting detail","directness":0}],"keywords_used":["keyword actually used"],"features_highlighted":["feature actually mentioned"],"aeo_notes":"1-2 sentences of overall guidance or gaps to address"}`;
 
-      const data = await callClaude(sys, usr, 3400);
-      setResult({ type: "aeo", ...data });
-    } catch {
-      setError("AEO revision failed. Try again.");
+      const aeoTrendsKeyword = aeoKeywords.trim().split(",")[0]?.trim() || sourceContent.split(/\s+/).slice(0, 4).join(" ");
+      const [data, trends] = await Promise.all([
+        callClaude(sys, usr, 3400),
+        fetchTrendingKeywords(aeoTrendsKeyword),
+      ]);
+      setResult({ type: "aeo", ...data, trendsKeyword: aeoTrendsKeyword, trendsData: trends });
+    } catch (e) {
+      setError(describeError(e));
+    }
+    setLoading(false);
+  };
+
+  const handleBenchmark = async () => {
+    if (!benchBrief.trim()) return;
+    setLoading(true); setError(null); setResult(null);
+    try {
+      const sys = `You are a senior brand and copy strategist who specializes in competitive positioning. Be precise, direct, and honest — don't hedge or inflate anything to be diplomatic. Ground trend claims in what you actually know about the category; if you're inferring rather than certain, say so briefly. ${SENTENCE_CASE_RULE} Return ONLY valid JSON. No markdown, no preamble.`;
+
+      const usr = `Build a competitive positioning report for this brief: "${benchBrief}"
+${benchAudience.trim() ? `Target audience: ${benchAudience.trim()}` : ""}
+
+Infer the product category, likely copy format, and 2 plausible representative competitors in this space from the brief itself — label them clearly as inferred.
+
+Produce:
+1. "trends": 3-5 current trends relevant to this category/campaign right now, each with a short "note" on why it matters here.
+2. "competitor_analysis": for each inferred competitor, a "name", "copy_style" (1-2 sentences on their tone/positioning), "features_emphasized" (array of what they lead with), "strengths" (1 sentence), "weaknesses" (1 sentence — a real gap or opportunity, not a diplomatic non-answer).
+3. "positioning_recommendation": 2-3 sentences on how this brief should position itself differently from the competitors and trends above — the specific angle to take.
+4. "archetype_suggestions": the top 2-3 best-fit brand archetypes from the standard 12 (Innocent, Everyman, Hero, Outlaw, Explorer, Creator, Ruler, Magician, Lover, Caregiver, Jester, Sage), each with a "fit_percent" (0-100) and a "why" (1-2 sentences on how this archetype should shape the copy's personality).
+${TONE_VOICE_INSTRUCTION} (as a RECOMMENDATION for where this copy should sit to stand out and fit the positioning — not an analysis of existing copy)
+5. "recommendations": 4-6 concrete, specific suggestions for how to write the actual copy to execute this positioning.
+
+Return:
+{"trends":[{"trend":"","note":""}],"competitor_analysis":[{"name":"","copy_style":"","features_emphasized":[],"strengths":"","weaknesses":""}],"positioning_recommendation":"","archetype_suggestions":[{"archetype":"","fit_percent":0,"why":""}],${TONE_VOICE_SCHEMA},"recommendations":[""]}`;
+
+      const data = await callClaude(sys, usr, 3800);
+      setResult({ type: "benchmark", ...data });
+    } catch (e) {
+      setError(describeError(e));
     }
     setLoading(false);
   };
@@ -277,18 +420,18 @@ Return:
       <div style={{ minHeight: "100vh", background: "#F2EFE9", fontFamily: "'DM Sans', sans-serif" }}>
 
         {/* Header */}
-        <header style={{ height: 56, padding: "0 28px", display: "flex", alignItems: "center", justifyContent: "flex-start", gap: 24, borderBottom: "1.5px solid #DDD9D0", background: "#F2EFE9", position: "sticky", top: 0, zIndex: 10 }}>
+        <header style={{ padding: "16px 28px 14px", display: "flex", flexDirection: "column", gap: 12, borderBottom: "1.5px solid #DDD9D0", background: "#F2EFE9", position: "sticky", top: 0, zIndex: 10 }}>
           <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 18, color: "#1C1915", letterSpacing: "-0.5px" }}>
             copy/lab
             <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: "#C8401A", fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", padding: "2px 6px", border: "1px solid #C8401A30", borderRadius: 3, background: "#FFF0EC", marginLeft: 8 }}>beta</span>
           </span>
 
-          <div style={{ display: "flex", background: "#E8E4DC", borderRadius: 7, padding: 3, gap: 2 }}>
-            {["generate", "analyze", "aeo"].map(m => (
+          <div style={{ display: "flex", background: "#E8E4DC", borderRadius: 7, padding: 3, gap: 2, width: "fit-content", maxWidth: "100%", flexWrap: "nowrap", overflowX: "auto" }}>
+            {["generate", "analyze", "aeo", "benchmark"].map(m => (
               <button key={m} className={`cl-mode ${mode === m ? "on" : ""}`}
                 onClick={() => { setMode(m); setResult(null); setError(null); }}
-                style={{ padding: "7px 12px", borderRadius: 5, border: "none", cursor: "pointer", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 12, letterSpacing: "0.03em", background: "transparent", color: "#7A7570", transition: "all 0.15s" }}>
-                {m === "generate" ? "Generate" : m === "analyze" ? "Analyze" : "AEO"}
+                style={{ padding: "7px 12px", borderRadius: 5, border: "none", cursor: "pointer", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 12, letterSpacing: "0.03em", background: "transparent", color: "#7A7570", transition: "all 0.15s", flexShrink: 0, whiteSpace: "nowrap" }}>
+                {m === "generate" ? "Generate" : m === "analyze" ? "Analyze" : m === "aeo" ? "AEO" : "Benchmark"}
               </button>
             ))}
           </div>
@@ -297,7 +440,7 @@ Return:
         {/* Two-column body: form left, results right */}
         <div className="cl-shell" style={{ display: "flex", alignItems: "flex-start", gap: 32, maxWidth: 1100, margin: 0, padding: "28px 28px 60px" }}>
 
-          <div className="cl-form-col" style={{ width: 360, flexShrink: 0, position: "sticky", top: 76 }}>
+          <div className="cl-form-col" style={{ width: 360, flexShrink: 0, position: "sticky", top: 108 }}>
 
           {/* ── GENERATE FORM ── */}
           {mode === "generate" && (
@@ -313,7 +456,7 @@ Return:
               <div>
                 <label style={labelStyle}>Brief</label>
                 <textarea className="cl-input" value={brief} onChange={e => setBrief(e.target.value)} rows={5}
-                  placeholder="What are you writing? Product, feature, campaign moment, placement, goal — the more context, the better."
+                  placeholder="Describe what you're writing about — the product category, feature, campaign moment, and goal. Use a generic description rather than the exact brand/product name (exact names can trigger content filters and cause failed generations)."
                   style={{ ...inputBase, resize: "none" }} />
               </div>
 
@@ -327,21 +470,21 @@ Return:
               <div>
                 <label style={labelStyle}>Target Audience <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional)</span></label>
                 <input className="cl-input" value={generateAudience} onChange={e => setGenerateAudience(e.target.value)}
-                  placeholder="e.g. first-time buyers, busy parents, Gen Z gamers…"
+                  placeholder="List audience segments separated by commas, e.g. first-time buyers, busy parents, Gen Z gamers"
                   style={inputBase} />
               </div>
 
               <div>
                 <label style={labelStyle}>Target Keyword <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, works it in naturally)</span></label>
                 <input className="cl-input" value={generateKeyword} onChange={e => setGenerateKeyword(e.target.value)}
-                  placeholder="e.g. wireless earbuds, home security camera…"
+                  placeholder="The exact word or phrase to naturally work into the copy, e.g. wireless earbuds"
                   style={inputBase} />
               </div>
 
               <div>
                 <label style={labelStyle}>Features to Highlight <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, comma-separated)</span></label>
                 <input className="cl-input" value={generateFeatures} onChange={e => setGenerateFeatures(e.target.value)}
-                  placeholder="e.g. 30-hour battery, IPX7 rating, wireless charging"
+                  placeholder="List specific features separated by commas, e.g. 30-hour battery, IPX7 rating, wireless charging"
                   style={inputBase} />
               </div>
 
@@ -366,28 +509,28 @@ Return:
               <div>
                 <label style={labelStyle}>Copy to Analyze</label>
                 <textarea className="cl-input" value={inputCopy} onChange={e => setInputCopy(e.target.value)} rows={4}
-                  placeholder="Paste the copy here."
+                  placeholder="Paste the exact copy you want reviewed — headline, body, CTA, or whatever you're evaluating."
                   style={{ ...inputBase, resize: "none" }} />
               </div>
 
               <div>
                 <label style={labelStyle}>Target Audience <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, sharpens audience fit scoring)</span></label>
                 <input className="cl-input" value={analyzeAudience} onChange={e => setAnalyzeAudience(e.target.value)}
-                  placeholder="e.g. first-time buyers, busy parents, Gen Z gamers…"
+                  placeholder="List audience segments separated by commas, e.g. first-time buyers, busy parents, Gen Z gamers"
                   style={inputBase} />
               </div>
 
               <div>
                 <label style={labelStyle}>Target Keyword <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, adds SEO scoring)</span></label>
                 <input className="cl-input" value={targetKeyword} onChange={e => setTargetKeyword(e.target.value)}
-                  placeholder="e.g. wireless earbuds, home security camera…"
+                  placeholder="The exact word or phrase to check for in this copy, e.g. wireless earbuds"
                   style={inputBase} />
               </div>
 
               <div>
                 <label style={labelStyle}>Context <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional)</span></label>
                 <textarea className="cl-input" value={context} onChange={e => setContext(e.target.value)} rows={3}
-                  placeholder="Campaign goal, placement, constraints, feedback already received…"
+                  placeholder="Any background that changes how this should be judged — campaign goal, where it appears, constraints, feedback you've already gotten."
                   style={{ ...inputBase, resize: "none" }} />
               </div>
 
@@ -418,14 +561,14 @@ Return:
                 <div>
                   <label style={labelStyle}>Existing FAQs</label>
                   <textarea className="cl-input" value={aeoExistingFaqs} onChange={e => setAeoExistingFaqs(e.target.value)} rows={6}
-                    placeholder="Paste your current FAQ questions and answers here."
+                    placeholder="Paste your current FAQ questions and answers exactly as they appear now."
                     style={{ ...inputBase, resize: "none" }} />
                 </div>
               ) : (
                 <div>
                   <label style={labelStyle}>Product / Topic Brief</label>
                   <textarea className="cl-input" value={aeoBrief} onChange={e => setAeoBrief(e.target.value)} rows={6}
-                    placeholder="What's this for? Product, feature set, common customer questions, anything AI-generated answers should get right."
+                    placeholder="Describe the product or topic generically — feature set, common customer questions, what AI-generated answers should get right. Avoid the exact brand/product name where possible."
                     style={{ ...inputBase, resize: "none" }} />
                 </div>
               )}
@@ -433,27 +576,51 @@ Return:
               <div>
                 <label style={labelStyle}>Target Keywords <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, comma-separated)</span></label>
                 <input className="cl-input" value={aeoKeywords} onChange={e => setAeoKeywords(e.target.value)}
-                  placeholder="e.g. wireless earbuds battery life, water resistance rating"
+                  placeholder="List target keywords separated by commas, e.g. wireless earbuds battery life, water resistance rating"
                   style={inputBase} />
               </div>
 
               <div>
                 <label style={labelStyle}>Features to Highlight <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, comma-separated)</span></label>
                 <input className="cl-input" value={aeoFeatures} onChange={e => setAeoFeatures(e.target.value)}
-                  placeholder="e.g. 30-hour battery, IPX7 rating, wireless charging"
+                  placeholder="List specific features separated by commas, e.g. 30-hour battery, IPX7 rating, wireless charging"
                   style={inputBase} />
               </div>
 
               <div>
                 <label style={labelStyle}>Target Audience <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional)</span></label>
                 <input className="cl-input" value={aeoAudience} onChange={e => setAeoAudience(e.target.value)}
-                  placeholder="e.g. first-time buyers, busy parents, Gen Z gamers…"
+                  placeholder="List audience segments separated by commas, e.g. first-time buyers, busy parents, Gen Z gamers"
                   style={inputBase} />
               </div>
 
               <button className="cl-btn" onClick={handleAeo} disabled={loading || !(aeoSource === "existing" ? aeoExistingFaqs : aeoBrief).trim()}
                 style={{ padding: "15px", background: "#C8401A", color: "#FFF", border: "none", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, letterSpacing: "0.04em", cursor: "pointer", transition: "background 0.15s" }}>
                 {loading ? "Optimizing…" : "Optimize for AEO →"}
+              </button>
+            </div>
+          )}
+
+          {/* ── BENCHMARK FORM ── */}
+          {mode === "benchmark" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+              <div>
+                <label style={labelStyle}>Brief / Idea</label>
+                <textarea className="cl-input" value={benchBrief} onChange={e => setBenchBrief(e.target.value)} rows={5}
+                  placeholder="Describe the product, campaign, or feature generically — what it is, who it's for, and what makes it worth talking about. Avoid the exact brand/product name where possible (it can trigger content filters). We'll identify trends, competitors, and positioning for you."
+                  style={{ ...inputBase, resize: "none" }} />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Target Audience <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional)</span></label>
+                <input className="cl-input" value={benchAudience} onChange={e => setBenchAudience(e.target.value)}
+                  placeholder="List audience segments separated by commas, e.g. first-time buyers, busy parents, Gen Z gamers"
+                  style={inputBase} />
+              </div>
+
+              <button className="cl-btn" onClick={handleBenchmark} disabled={loading || !benchBrief.trim()}
+                style={{ padding: "15px", background: "#C8401A", color: "#FFF", border: "none", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, letterSpacing: "0.04em", cursor: "pointer", transition: "background 0.15s" }}>
+                {loading ? "Building report…" : "Build Positioning Report →"}
               </button>
             </div>
           )}
@@ -471,7 +638,7 @@ Return:
                 ))}
               </div>
               <p style={{ color: "#A0998F", fontSize: 13 }}>
-                {mode === "generate" ? "Crafting 3 strategic variants…" : mode === "analyze" ? "Running full copy audit…" : "Optimizing for answer engines…"}
+                {mode === "generate" ? "Crafting 3 strategic variants…" : mode === "analyze" ? "Running full copy audit…" : mode === "aeo" ? "Optimizing for answer engines…" : "Researching trends and competitors…"}
               </p>
             </div>
           )}
@@ -500,6 +667,11 @@ Return:
                     <p style={{ fontSize: 13, color: "#7A4E10", lineHeight: 1.6 }}>{result.narrative}</p>
                   </div>
                 )}
+
+                <ToneVoicePanel data={result.tone_voice_breakdown} />
+                <div style={{ marginTop: 16 }}>
+                  <TrendingKeywordsPanel keyword={result.trendsKeyword} data={result.trendsData} />
+                </div>
               </div>
 
               {/* Tabs */}
@@ -566,6 +738,28 @@ Return:
                         <p style={{ fontSize: 12, color: "#2A3D80", lineHeight: 1.55 }}>{v.keyword_fit}</p>
                       </div>
                     )}
+
+                    {v.keywords_used?.length > 0 && (
+                      <div>
+                        <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Keywords Used</p>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {v.keywords_used.map((k, i) => (
+                            <span key={i} style={{ padding: "5px 11px", background: "#F0FBF5", border: "1px solid #1E7A4820", borderRadius: 20, fontSize: 12, color: "#1A5C38", fontFamily: "'DM Sans', sans-serif" }}>{k}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {v.features_used?.length > 0 && (
+                      <div>
+                        <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Features Highlighted</p>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {v.features_used.map((f, i) => (
+                            <span key={i} style={{ padding: "5px 11px", background: "#F5F8FF", border: "1px solid #3A5FC820", borderRadius: 20, fontSize: 12, color: "#2A3D80", fontFamily: "'DM Sans', sans-serif" }}>{f}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -604,6 +798,10 @@ Return:
                   <ScoreBar key={k} label={k.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())} score={v.score} note={v.note} />
                 ))}
               </div>
+
+              <ToneVoicePanel data={result.tone_voice_breakdown} />
+
+              <TrendingKeywordsPanel keyword={result.trendsKeyword} data={result.trendsData} />
 
               {result.flags?.length > 0 && (
                 <div>
@@ -693,6 +891,97 @@ Return:
                 </div>
               )}
 
+              <TrendingKeywordsPanel keyword={result.trendsKeyword} data={result.trendsData} />
+
+            </div>
+          )}
+
+          {/* ── BENCHMARK RESULTS ── */}
+          {!loading && result?.type === "benchmark" && (
+            <div className="cl-fade" style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 20 }}>
+
+              {result.positioning_recommendation && (
+                <div style={{ padding: "18px 16px", background: "#1C1915", borderRadius: 10 }}>
+                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", color: "#C8401A", marginBottom: 10 }}>Positioning Recommendation</p>
+                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 15, color: "#F5F2EC", lineHeight: 1.5 }}>{result.positioning_recommendation}</p>
+                </div>
+              )}
+
+              {result.trends?.length > 0 && (
+                <div>
+                  <h2 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 14, color: "#1C1915", marginBottom: 12 }}>Current Trends</h2>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {result.trends.map((t, i) => (
+                      <div key={i} style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 8, padding: "12px 14px" }}>
+                        <p style={{ fontSize: 13, fontWeight: 600, color: "#1C1915", marginBottom: 4 }}>{t.trend}</p>
+                        <p style={{ fontSize: 12, color: "#8A8580", lineHeight: 1.5 }}>{t.note}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {result.competitor_analysis?.length > 0 && (
+                <div>
+                  <h2 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 14, color: "#1C1915", marginBottom: 12 }}>Competitor Analysis</h2>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {result.competitor_analysis.map((c, i) => (
+                      <div key={i} style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px" }}>
+                        <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, color: "#1C1915", marginBottom: 8 }}>{c.name}</p>
+                        {c.copy_style && <p style={{ fontSize: 13, color: "#3A3730", lineHeight: 1.55, marginBottom: 10 }}>{c.copy_style}</p>}
+                        {c.features_emphasized?.length > 0 && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                            {c.features_emphasized.map((f, j) => (
+                              <span key={j} style={{ padding: "4px 10px", background: "#F5F8FF", border: "1px solid #3A5FC820", borderRadius: 20, fontSize: 11, color: "#2A3D80" }}>{f}</span>
+                            ))}
+                          </div>
+                        )}
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                          {c.strengths && (
+                            <div style={{ padding: "10px 12px", background: "#F0FBF5", border: "1px solid #1E7A4820", borderRadius: 8 }}>
+                              <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#1E7A48", marginBottom: 4 }}>Strength</p>
+                              <p style={{ fontSize: 12, color: "#1A5C38", lineHeight: 1.5 }}>{c.strengths}</p>
+                            </div>
+                          )}
+                          {c.weaknesses && (
+                            <div style={{ padding: "10px 12px", background: "#FFF8F0", border: "1px solid #C0782020", borderRadius: 8 }}>
+                              <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#C07820", marginBottom: 4 }}>Gap</p>
+                              <p style={{ fontSize: 12, color: "#7A4E10", lineHeight: 1.5 }}>{c.weaknesses}</p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {result.archetype_suggestions?.length > 0 && (
+                <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px" }}>
+                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590", marginBottom: 14 }}>Brand Archetype Fit</p>
+                  {result.archetype_suggestions.map((a, i) => (
+                    <div key={i} style={{ marginBottom: i === result.archetype_suggestions.length - 1 ? 0 : 16 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: "#1C1915" }}>{a.archetype}</span>
+                        <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, fontWeight: 500, color: scoreColor(a.fit_percent), background: scoreColor(a.fit_percent) + "15", border: `1px solid ${scoreColor(a.fit_percent)}25`, borderRadius: 3, padding: "1px 7px" }}>{a.fit_percent}%</span>
+                      </div>
+                      <div style={{ height: 4, background: "#E8E3DB", borderRadius: 2, marginBottom: 6, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${a.fit_percent}%`, background: scoreColor(a.fit_percent), borderRadius: 2 }} />
+                      </div>
+                      <p style={{ fontSize: 12, color: "#8A8580", lineHeight: 1.5 }}>{a.why}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <ToneVoicePanel data={result.tone_voice_breakdown} />
+
+              {result.recommendations?.length > 0 && (
+                <div>
+                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#1E7A48", marginBottom: 8 }}>↑ Recommendations</p>
+                  {result.recommendations.map((s, i) => <Pill key={i} type="fix">{s}</Pill>)}
+                </div>
+              )}
             </div>
           )}
 
