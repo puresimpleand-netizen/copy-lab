@@ -303,7 +303,6 @@ export default function CopyLab() {
   const [aeoPageName, setAeoPageName] = useState("");
   const [aeoPageType, setAeoPageType] = useState("");
   const [aeoPagePurpose, setAeoPagePurpose] = useState("");
-  const [aeoPageTemplate, setAeoPageTemplate] = useState("");
   const [aeoReferenceUrl, setAeoReferenceUrl] = useState("");
   const [aeoTones, setAeoTones] = useState([]);
   const [aeoFaqDirection, setAeoFaqDirection] = useState("");
@@ -438,7 +437,6 @@ Your job is judgment, not coverage:
         aeoPageName.trim() && `Product Name: ${aeoPageName.trim()}`,
         aeoPageType.trim() && `Page Type: ${aeoPageType.trim()}`,
         aeoPagePurpose.trim() && `Page Purpose: ${aeoPagePurpose.trim()}`,
-        aeoPageTemplate.trim() && `Page Template: ${aeoPageTemplate.trim()}`,
         aeoReferenceUrl.trim() && `Reference URL: ${aeoReferenceUrl.trim()}`,
       ].filter(Boolean);
       const pageContextBlock = pageFields.length ? `\n\nPage context:\n${pageFields.join("\n")}` : "";
@@ -726,12 +724,6 @@ Return:
                   <label style={labelStyle}>Reference URL: <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, context only)</span></label>
                   <input className="cl-input" value={aeoReferenceUrl} onChange={e => setAeoReferenceUrl(e.target.value)}
                     placeholder="A page this relates to (not fetched live, used as context only)."
-                    style={inputBase} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Page Template: <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional)</span></label>
-                  <input className="cl-input" value={aeoPageTemplate} onChange={e => setAeoPageTemplate(e.target.value)}
-                    placeholder="e.g. AEM"
                     style={inputBase} />
                 </div>
               </div>
