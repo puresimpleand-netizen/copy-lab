@@ -274,18 +274,25 @@ export default function CopyLab() {
   const [selectedV, setSelectedV] = useState(0);
   const [copied, setCopied] = useState(null);
 
-  const [brief, setBrief] = useState("");
+  const [generateProductName, setGenerateProductName] = useState("");
   const [copyType, setCopyType] = useState("headline");
+  const [generatePagePurpose, setGeneratePagePurpose] = useState("");
+  const [generateReferenceUrl, setGenerateReferenceUrl] = useState("");
   const [tones, setTones] = useState([]);
   const [generateKeyword, setGenerateKeyword] = useState("");
   const [generateAudience, setGenerateAudience] = useState("");
   const [generateFeatures, setGenerateFeatures] = useState("");
 
-  const [inputCopy, setInputCopy] = useState("");
-  const [context, setContext] = useState("");
+  const [analyzeProductName, setAnalyzeProductName] = useState("");
   const [analyzeFormat, setAnalyzeFormat] = useState("headline");
+  const [inputCopy, setInputCopy] = useState("");
+  const [analyzePagePurpose, setAnalyzePagePurpose] = useState("");
+  const [analyzeReferenceUrl, setAnalyzeReferenceUrl] = useState("");
+  const [analyzeTones, setAnalyzeTones] = useState([]);
+  const [context, setContext] = useState("");
   const [targetKeyword, setTargetKeyword] = useState("");
   const [analyzeAudience, setAnalyzeAudience] = useState("");
+  const [analyzeFeatures, setAnalyzeFeatures] = useState("");
 
   const [aeoSource, setAeoSource] = useState("existing"); // "existing" | "brief"
   const [aeoExistingFaqs, setAeoExistingFaqs] = useState("");
@@ -298,12 +305,15 @@ export default function CopyLab() {
   const [aeoPagePurpose, setAeoPagePurpose] = useState("");
   const [aeoPageTemplate, setAeoPageTemplate] = useState("");
   const [aeoReferenceUrl, setAeoReferenceUrl] = useState("");
+  const [aeoTones, setAeoTones] = useState([]);
   const [aeoFaqDirection, setAeoFaqDirection] = useState("");
 
   const [benchBrief, setBenchBrief] = useState("");
   const [benchAudience, setBenchAudience] = useState("");
 
   const toggleTone = t => setTones(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
+  const toggleAnalyzeTone = t => setAnalyzeTones(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
+  const toggleAeoTone = t => setAeoTones(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
 
   const handleCopy = (text, id) => {
     navigator.clipboard.writeText(text);
@@ -312,17 +322,18 @@ export default function CopyLab() {
   };
 
   const handleGenerate = async () => {
-    if (!brief.trim()) return;
+    if (!generateProductName.trim() || !generatePagePurpose.trim()) return;
     setLoading(true); setError(null); setResult(null);
     try {
       const sys = `You are a senior UX copywriter and brand strategist with strong SEO instincts. ${SENTENCE_CASE_RULE} Return ONLY valid JSON. No markdown, no preamble.`;
+      const brief = `Product Name: ${generateProductName.trim()}\nPage Purpose: ${generatePagePurpose.trim()}${generateReferenceUrl.trim() ? `\nReference URL: ${generateReferenceUrl.trim()} (context only, not fetched live)` : ""}`;
       const keywordBlock = generateKeyword.trim()
         ? `\nTarget keyword: "${generateKeyword.trim()}" — work it in naturally in at least one variant where it fits the format and doesn't feel forced. Don't stuff it if it hurts readability.`
         : "";
       const featuresBlock = generateFeatures.trim()
         ? `\nFeatures/details to highlight where relevant: ${generateFeatures.trim()}`
         : "";
-      const usr = `Write 3 distinct variants of ${copyType.replace(/_/g, " ")} copy for: "${brief}"
+      const usr = `Write 3 distinct variants of ${copyType.replace(/_/g, " ")} copy for:\n${brief}
 Tone: ${tones.length ? tones.join(", ") : "balanced and on-brand"}${generateAudience.trim() ? `\nTarget audience: ${generateAudience.trim()} — write with this audience's needs, vocabulary, and expectations in mind.` : ""}${keywordBlock}${featuresBlock}
 
 As you write the 3 variants, naturally work in the target keyword and features where relevant, without hurting readability or feeling stuffed.
@@ -333,9 +344,9 @@ Return:
 {"variants":[{"copy":"","angle":"2-3 word label","rationale":"1-2 sentences","strength":"1 sentence","watch_out":"1 honest limitation","tone_match":0${generateKeyword.trim() ? ',"keyword_use":0' : ""}${generateKeyword.trim() ? ',"keyword_fit":"1 sentence on whether/how the keyword was used, or why it was skipped"' : ""},"keywords_used":[],"features_used":[]}],"narrative":"",${TONE_VOICE_SCHEMA}}`;
       const [data, trends] = await Promise.all([
         callClaude(sys, usr, 3400),
-        fetchTrendingKeywords(generateKeyword || brief.split(/\s+/).slice(0, 4).join(" ")),
+        fetchTrendingKeywords(generateKeyword.trim() || generateProductName.trim()),
       ]);
-      setResult({ type: "generate", ...data, trendsKeyword: generateKeyword.trim() || brief.split(/\s+/).slice(0, 4).join(" "), trendsData: trends });
+      setResult({ type: "generate", ...data, trendsKeyword: generateKeyword.trim() || generateProductName.trim(), trendsData: trends });
       setSelectedV(0);
     } catch (e) {
       setError(describeError(e));
@@ -351,8 +362,20 @@ Return:
       const seoBlock = targetKeyword.trim()
         ? `\nTarget keyword: "${targetKeyword.trim()}"\nAlso evaluate SEO and add these two entries inside "scores": "keyword_usage" (score + note on whether the keyword appears naturally, in a strong position, and isn't stuffed) and "length_fit" (score + note on whether the character count suits ${analyzeFormat.replace(/_/g, " ")} for search/display purposes, e.g. ~50-60 chars for a title, ~150-160 for a meta description, stating the actual character count in the note).`
         : "";
-      const usr = `Review this ${analyzeFormat.replace(/_/g, " ")}: "${inputCopy}"
-${context ? `Context: ${context}` : ""}${analyzeAudience.trim() ? `\nTarget audience: ${analyzeAudience.trim()} — score "audience_fit" specifically against how well this copy speaks to this audience (their needs, vocabulary, expectations), not a generic audience.` : ""}${seoBlock}
+      const pageFields = [
+        analyzeProductName.trim() && `Product Name: ${analyzeProductName.trim()}`,
+        analyzePagePurpose.trim() && `Page Purpose: ${analyzePagePurpose.trim()}`,
+        analyzeReferenceUrl.trim() && `Reference URL: ${analyzeReferenceUrl.trim()} (context only, not fetched live)`,
+      ].filter(Boolean);
+      const pageContextBlock = pageFields.length ? `\n${pageFields.join("\n")}` : "";
+      const featuresBlock = analyzeFeatures.trim()
+        ? `\nFeatures expected to be highlighted: ${analyzeFeatures.trim()} — note in "improvements" or "flags" if these are missing.`
+        : "";
+      const analyzeToneBlock = analyzeTones.length
+        ? `\nIntended tone: ${analyzeTones.join(", ")} — score "tone_of_voice" against how well this copy matches this intended tone, not a generic assessment.`
+        : "";
+      const usr = `Review this ${analyzeFormat.replace(/_/g, " ")}: "${inputCopy}"${pageContextBlock}
+${context ? `Context: ${context}` : ""}${analyzeAudience.trim() ? `\nTarget audience: ${analyzeAudience.trim()} — score "audience_fit" specifically against how well this copy speaks to this audience (their needs, vocabulary, expectations), not a generic audience.` : ""}${analyzeToneBlock}${featuresBlock}${seoBlock}
 ${TONE_VOICE_INSTRUCTION}
 Return:
 {"verdict":"one sharp sentence","overall_score":78,"scores":{"clarity":{"score":80,"note":""},"tone_of_voice":{"score":75,"note":""},"audience_fit":{"score":82,"note":""},"accuracy":{"score":85,"note":""},"structure":{"score":70,"note":""}${targetKeyword.trim() ? ',"keyword_usage":{"score":0,"note":""},"length_fit":{"score":0,"note":""}' : ""}},"flags":["problem 1"],"improvements":["suggestion 1"],"rewrite":"sharper version or null",${TONE_VOICE_SCHEMA}}`;
@@ -407,9 +430,12 @@ Your job is judgment, not coverage:
       const audienceBlock = aeoAudience.trim()
         ? `\nTarget audience: ${aeoAudience.trim()} — phrase questions the way this audience would actually ask them.`
         : "";
+      const toneBlock = aeoTones.length
+        ? `\nTone: ${aeoTones.join(", ")} — write the answers in this tone, within the answer format rules above.`
+        : "";
 
       const pageFields = [
-        aeoPageName.trim() && `Page/Promotion Name: ${aeoPageName.trim()}`,
+        aeoPageName.trim() && `Product Name: ${aeoPageName.trim()}`,
         aeoPageType.trim() && `Page Type: ${aeoPageType.trim()}`,
         aeoPagePurpose.trim() && `Page Purpose: ${aeoPagePurpose.trim()}`,
         aeoPageTemplate.trim() && `Page Template: ${aeoPageTemplate.trim()}`,
@@ -418,7 +444,7 @@ Your job is judgment, not coverage:
       const pageContextBlock = pageFields.length ? `\n\nPage context:\n${pageFields.join("\n")}` : "";
       const faqDirectionBlock = aeoFaqDirection.trim() ? `\n\nFAQ direction: ${aeoFaqDirection.trim()}` : "";
 
-      const usr = `${task}${keywordBlock}${featuresBlock}${audienceBlock}${pageContextBlock}${faqDirectionBlock}
+      const usr = `${task}${keywordBlock}${featuresBlock}${audienceBlock}${toneBlock}${pageContextBlock}${faqDirectionBlock}
 For each FAQ, score "directness" (0-100: does the first sentence of the answer fully resolve the question with no throat-clearing).
 Also identify which of the target keywords (if any) were actually used across the FAQs, and which features/details were highlighted.
 Return:
@@ -486,9 +512,8 @@ Return:
         .cl-vtab { transition: background 0.15s, color 0.15s; }
         .cl-vtab.sel { background: #1C1915 !important; color: #F5F2EC !important; }
         .cl-shell * { text-align: left; }
-        @media (max-width: 860px) {
-          .cl-shell { flex-direction: column !important; }
-          .cl-form-col { width: 100% !important; position: static !important; }
+        @media (max-width: 600px) {
+          .cl-shell { padding-left: 16px !important; padding-right: 16px !important; }
         }
       `}</style>
 
@@ -497,7 +522,7 @@ Return:
         {/* Header */}
         <header style={{ padding: "16px 28px 14px", display: "flex", flexDirection: "column", gap: 12, borderBottom: "1.5px solid #DDD9D0", background: "#F2EFE9", position: "sticky", top: 0, zIndex: 10 }}>
           <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 18, color: "#1C1915", letterSpacing: "-0.5px" }}>
-            copy/lab
+            CIG Copy AI
             <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 9, color: "#C8401A", fontWeight: 500, letterSpacing: "0.1em", textTransform: "uppercase", padding: "2px 6px", border: "1px solid #C8401A30", borderRadius: 3, background: "#FFF0EC", marginLeft: 8 }}>beta</span>
           </span>
 
@@ -513,15 +538,22 @@ Return:
         </header>
 
         {/* Two-column body: form left, results right */}
-        <div className="cl-shell" style={{ display: "flex", alignItems: "flex-start", gap: 32, maxWidth: 1100, margin: 0, padding: "28px 28px 60px" }}>
+        <div className="cl-shell" style={{ display: "flex", flexDirection: "column", maxWidth: 760, margin: 0, padding: "28px 28px 60px" }}>
 
-          <div className="cl-form-col" style={{ width: 360, flexShrink: 0, position: "sticky", top: 108 }}>
+          <div className="cl-form-col" style={{ width: "100%" }}>
 
           {/* ── GENERATE FORM ── */}
           {mode === "generate" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               <div>
-                <label style={labelStyle}>Copy Type</label>
+                <label style={labelStyle}>Product Name:</label>
+                <input className="cl-input" value={generateProductName} onChange={e => setGenerateProductName(e.target.value)}
+                  placeholder="What this is about — a generic description rather than the exact brand/product name (exact names can trigger content filters)."
+                  style={inputBase} />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Page Type:</label>
                 <select className="cl-input" value={copyType} onChange={e => setCopyType(e.target.value)}
                   style={{ ...inputBase, cursor: "pointer" }}>
                   {COPY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -529,43 +561,43 @@ Return:
               </div>
 
               <div>
-                <label style={labelStyle}>Brief</label>
-                <textarea className="cl-input" value={brief} onChange={e => setBrief(e.target.value)} rows={5}
-                  placeholder="Describe what you're writing about — the product category, feature, campaign moment, and goal. Use a generic description rather than the exact brand/product name (exact names can trigger content filters and cause failed generations)."
+                <label style={labelStyle}>Page Purpose:</label>
+                <textarea className="cl-input" value={generatePagePurpose} onChange={e => setGeneratePagePurpose(e.target.value)} rows={4}
+                  placeholder="What this page/copy needs to achieve — the campaign moment, feature, or goal."
                   style={{ ...inputBase, resize: "none" }} />
               </div>
 
               <div>
-                <label style={labelStyle}>Tone <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(pick any)</span></label>
+                <label style={labelStyle}>Reference URL: <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, context only)</span></label>
+                <input className="cl-input" value={generateReferenceUrl} onChange={e => setGenerateReferenceUrl(e.target.value)}
+                  placeholder="A page this relates to (not fetched live, used as context only)."
+                  style={inputBase} />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Tone:</label>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                   {TONE_TAGS.map(t => <Tag key={t} label={t} active={tones.includes(t)} onClick={() => toggleTone(t)} />)}
                 </div>
               </div>
 
               <div>
-                <label style={labelStyle}>Target Audience <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional)</span></label>
+                <label style={labelStyle}>Target Audience: <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional)</span></label>
                 <input className="cl-input" value={generateAudience} onChange={e => setGenerateAudience(e.target.value)}
                   placeholder="List audience segments separated by commas, e.g. first-time buyers, busy parents, Gen Z gamers"
                   style={inputBase} />
               </div>
 
               <div>
-                <label style={labelStyle}>Target Keyword <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, works it in naturally)</span></label>
-                <input className="cl-input" value={generateKeyword} onChange={e => setGenerateKeyword(e.target.value)}
-                  placeholder="The exact word or phrase to naturally work into the copy, e.g. wireless earbuds"
-                  style={inputBase} />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Features to Highlight <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, comma-separated)</span></label>
+                <label style={labelStyle}>Features to Highlight: <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, comma-separated)</span></label>
                 <input className="cl-input" value={generateFeatures} onChange={e => setGenerateFeatures(e.target.value)}
                   placeholder="List specific features separated by commas, e.g. 30-hour battery, IPX7 rating, wireless charging"
                   style={inputBase} />
               </div>
 
-              <button className="cl-btn" onClick={handleGenerate} disabled={loading || !brief.trim()}
+              <button className="cl-btn" onClick={handleGenerate} disabled={loading || !generateProductName.trim() || !generatePagePurpose.trim()}
                 style={{ padding: "15px", background: "#C8401A", color: "#FFF", border: "none", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, letterSpacing: "0.04em", cursor: "pointer", transition: "background 0.15s" }}>
-                {loading ? "Generating…" : "Generate 3 variants →"}
+                {loading ? "Generating…" : "Generate options →"}
               </button>
             </div>
           )}
@@ -574,7 +606,14 @@ Return:
           {mode === "analyze" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               <div>
-                <label style={labelStyle}>Format</label>
+                <label style={labelStyle}>Product Name: <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional)</span></label>
+                <input className="cl-input" value={analyzeProductName} onChange={e => setAnalyzeProductName(e.target.value)}
+                  placeholder="What this copy is about — a generic description rather than the exact brand/product name."
+                  style={inputBase} />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Page Type:</label>
                 <select className="cl-input" value={analyzeFormat} onChange={e => setAnalyzeFormat(e.target.value)}
                   style={{ ...inputBase, cursor: "pointer" }}>
                   {COPY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -582,36 +621,50 @@ Return:
               </div>
 
               <div>
-                <label style={labelStyle}>Copy to Analyze</label>
+                <label style={labelStyle}>Copy to Analyze:</label>
                 <textarea className="cl-input" value={inputCopy} onChange={e => setInputCopy(e.target.value)} rows={4}
                   placeholder="Paste the exact copy you want reviewed — headline, body, CTA, or whatever you're evaluating."
                   style={{ ...inputBase, resize: "none" }} />
               </div>
 
               <div>
-                <label style={labelStyle}>Target Audience <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, sharpens audience fit scoring)</span></label>
+                <label style={labelStyle}>Page Purpose: <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional)</span></label>
+                <textarea className="cl-input" value={analyzePagePurpose} onChange={e => setAnalyzePagePurpose(e.target.value)} rows={3}
+                  placeholder="What this page/copy needs to achieve — the campaign goal or purpose."
+                  style={{ ...inputBase, resize: "none" }} />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Reference URL: <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, context only)</span></label>
+                <input className="cl-input" value={analyzeReferenceUrl} onChange={e => setAnalyzeReferenceUrl(e.target.value)}
+                  placeholder="A page this relates to (not fetched live, used as context only)."
+                  style={inputBase} />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Tone: <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional — the tone this copy should be judged against)</span></label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {TONE_TAGS.map(t => <Tag key={t} label={t} active={analyzeTones.includes(t)} onClick={() => toggleAnalyzeTone(t)} />)}
+                </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Target Audience: <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, sharpens audience fit scoring)</span></label>
                 <input className="cl-input" value={analyzeAudience} onChange={e => setAnalyzeAudience(e.target.value)}
                   placeholder="List audience segments separated by commas, e.g. first-time buyers, busy parents, Gen Z gamers"
                   style={inputBase} />
               </div>
 
               <div>
-                <label style={labelStyle}>Target Keyword <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, adds SEO scoring)</span></label>
-                <input className="cl-input" value={targetKeyword} onChange={e => setTargetKeyword(e.target.value)}
-                  placeholder="The exact word or phrase to check for in this copy, e.g. wireless earbuds"
+                <label style={labelStyle}>Features to Highlight: <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, comma-separated)</span></label>
+                <input className="cl-input" value={analyzeFeatures} onChange={e => setAnalyzeFeatures(e.target.value)}
+                  placeholder="List specific features separated by commas — flags if any are missing from the copy."
                   style={inputBase} />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Context <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional)</span></label>
-                <textarea className="cl-input" value={context} onChange={e => setContext(e.target.value)} rows={3}
-                  placeholder="Any background that changes how this should be judged — campaign goal, where it appears, constraints, feedback you've already gotten."
-                  style={{ ...inputBase, resize: "none" }} />
               </div>
 
               <button className="cl-btn" onClick={handleAnalyze} disabled={loading || !inputCopy.trim()}
                 style={{ padding: "15px", background: "#C8401A", color: "#FFF", border: "none", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, letterSpacing: "0.04em", cursor: "pointer", transition: "background 0.15s" }}>
-                {loading ? "Analyzing…" : "Run Analysis →"}
+                {loading ? "Analyzing…" : "Run analysis →"}
               </button>
             </div>
           )}
@@ -651,25 +704,57 @@ Return:
               <div style={{ borderTop: "1px solid #DDD9D0", paddingTop: 18, display: "flex", flexDirection: "column", gap: 14 }}>
                 <p style={{ ...labelStyle, marginBottom: -2 }}>Page Context {aeoSource === "brief" ? <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#C8401A" }}>(Purpose required to generate)</span> : <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional)</span>}</p>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div>
+                  <label style={labelStyle}>Product Name:</label>
                   <input className="cl-input" value={aeoPageName} onChange={e => setAeoPageName(e.target.value)}
-                    placeholder="Page/promotion name, e.g. Holiday"
+                    placeholder="e.g. Holiday promotion — a generic description rather than the exact brand name"
                     style={inputBase} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Page Type:</label>
                   <input className="cl-input" value={aeoPageType} onChange={e => setAeoPageType(e.target.value)}
-                    placeholder="Page type, e.g. Promotion"
+                    placeholder="e.g. Promotion, PDP, Landing Page"
                     style={inputBase} />
                 </div>
-                <input className="cl-input" value={aeoPagePurpose} onChange={e => setAeoPagePurpose(e.target.value)}
-                  placeholder={aeoSource === "brief" ? "Page purpose (required) — what this page is for and what it's selling/introducing" : "Page purpose — what this page is for and what it's selling/introducing"}
-                  style={{ ...inputBase, borderColor: aeoSource === "brief" && !aeoPagePurpose.trim() ? "#C8401A50" : "#E0DBD2" }} />
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  <input className="cl-input" value={aeoPageTemplate} onChange={e => setAeoPageTemplate(e.target.value)}
-                    placeholder="Page template, e.g. AEM"
-                    style={inputBase} />
+                <div>
+                  <label style={labelStyle}>Page Purpose: {aeoSource === "brief" && <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#C8401A" }}>(required)</span>}</label>
+                  <input className="cl-input" value={aeoPagePurpose} onChange={e => setAeoPagePurpose(e.target.value)}
+                    placeholder="What this page is for and what it's selling/introducing"
+                    style={{ ...inputBase, borderColor: aeoSource === "brief" && !aeoPagePurpose.trim() ? "#C8401A50" : "#E0DBD2" }} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Reference URL: <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, context only)</span></label>
                   <input className="cl-input" value={aeoReferenceUrl} onChange={e => setAeoReferenceUrl(e.target.value)}
-                    placeholder="Reference URL (for context, not fetched live)"
+                    placeholder="A page this relates to (not fetched live, used as context only)."
                     style={inputBase} />
                 </div>
+                <div>
+                  <label style={labelStyle}>Page Template: <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional)</span></label>
+                  <input className="cl-input" value={aeoPageTemplate} onChange={e => setAeoPageTemplate(e.target.value)}
+                    placeholder="e.g. AEM"
+                    style={inputBase} />
+                </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Tone: <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, pick any)</span></label>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {TONE_TAGS.map(t => <Tag key={t} label={t} active={aeoTones.includes(t)} onClick={() => toggleAeoTone(t)} />)}
+                </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>Target Audience: <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional)</span></label>
+                <input className="cl-input" value={aeoAudience} onChange={e => setAeoAudience(e.target.value)}
+                  placeholder="List audience segments separated by commas, e.g. first-time buyers, busy parents, Gen Z gamers…"
+                  style={inputBase} />
+              </div>
+
+              <div>
+                <label style={labelStyle}>Features to Highlight: <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, comma-separated)</span></label>
+                <input className="cl-input" value={aeoFeatures} onChange={e => setAeoFeatures(e.target.value)}
+                  placeholder="List specific features separated by commas, e.g. 30-hour battery, IPX7 rating, wireless charging"
+                  style={inputBase} />
               </div>
 
               <div>
@@ -683,20 +768,6 @@ Return:
                 <label style={labelStyle}>Target Keywords <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, comma-separated)</span></label>
                 <input className="cl-input" value={aeoKeywords} onChange={e => setAeoKeywords(e.target.value)}
                   placeholder="List target keywords separated by commas, e.g. wireless earbuds battery life, water resistance rating"
-                  style={inputBase} />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Features to Highlight <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, comma-separated)</span></label>
-                <input className="cl-input" value={aeoFeatures} onChange={e => setAeoFeatures(e.target.value)}
-                  placeholder="List specific features separated by commas, e.g. 30-hour battery, IPX7 rating, wireless charging"
-                  style={inputBase} />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Target Audience <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional)</span></label>
-                <input className="cl-input" value={aeoAudience} onChange={e => setAeoAudience(e.target.value)}
-                  placeholder="List audience segments separated by commas, e.g. first-time buyers, busy parents, Gen Z gamers"
                   style={inputBase} />
               </div>
 
@@ -726,14 +797,14 @@ Return:
 
               <button className="cl-btn" onClick={handleBenchmark} disabled={loading || !benchBrief.trim()}
                 style={{ padding: "15px", background: "#C8401A", color: "#FFF", border: "none", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, letterSpacing: "0.04em", cursor: "pointer", transition: "background 0.15s" }}>
-                {loading ? "Building report…" : "Build Positioning Report →"}
+                {loading ? "Building report…" : "Build positioning report →"}
               </button>
             </div>
           )}
 
           </div>
 
-          <div className="cl-results-col" style={{ flex: 1, minWidth: 0 }}>
+          <div className="cl-results-col" style={{ width: "100%", marginTop: 8 }}>
 
           {/* ── LOADING ── */}
           {loading && (
