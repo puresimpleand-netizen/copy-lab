@@ -512,6 +512,7 @@ Return:
         .cl-shell * { text-align: left; }
         @media (max-width: 600px) {
           .cl-shell { padding-left: 16px !important; padding-right: 16px !important; }
+          .cl-prompt-grid { grid-template-columns: 1fr !important; }
         }
       `}</style>
 
@@ -699,68 +700,95 @@ Return:
                 </div>
               )}
 
-              <div style={{ borderTop: "1px solid #DDD9D0", paddingTop: 18, display: "flex", flexDirection: "column", gap: 14 }}>
-                <p style={{ ...labelStyle, marginBottom: -2 }}>Page Context {aeoSource === "brief" ? <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#C8401A" }}>(Purpose required to generate)</span> : <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional)</span>}</p>
-
-                <div>
-                  <label style={labelStyle}>Product Name:</label>
-                  <input className="cl-input" value={aeoPageName} onChange={e => setAeoPageName(e.target.value)}
-                    placeholder="e.g. Holiday promotion — a generic description rather than the exact brand name"
-                    style={inputBase} />
+              <div style={{ borderRadius: 10, overflow: "hidden", border: "1.5px solid #DDD9D0" }}>
+                <div style={{ background: "#0F1F3D", padding: "12px 16px" }}>
+                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 13, color: "#FFF", margin: 0 }}>Prompt Structure</p>
                 </div>
-                <div>
-                  <label style={labelStyle}>Page Type:</label>
-                  <input className="cl-input" value={aeoPageType} onChange={e => setAeoPageType(e.target.value)}
-                    placeholder="e.g. Promotion, PDP, Landing Page"
-                    style={inputBase} />
+
+                <div className="cl-prompt-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", background: "#FFF" }}>
+
+                  {/* Left: numbered field list */}
+                  <div style={{ padding: "16px", borderRight: "1px solid #EDEAE3", display: "flex", flexDirection: "column", gap: 14 }}>
+                    <span style={{ display: "inline-block", width: "fit-content", padding: "3px 10px", background: "#0F1F3D", color: "#FFF", borderRadius: 20, fontSize: 10, fontWeight: 700, fontFamily: "'Syne', sans-serif", letterSpacing: "0.04em" }}>MANDATORY</span>
+
+                    {[
+                      { n: 1, label: "Product Name", node: (
+                        <input className="cl-input" value={aeoPageName} onChange={e => setAeoPageName(e.target.value)}
+                          placeholder="e.g. Holiday promotion — generic, not exact brand name" style={{ ...inputBase, padding: "9px 11px", fontSize: 13 }} />
+                      ) },
+                      { n: 2, label: "Page Type", node: (
+                        <input className="cl-input" value={aeoPageType} onChange={e => setAeoPageType(e.target.value)}
+                          placeholder="e.g. Promotion, PDP, Landing Page" style={{ ...inputBase, padding: "9px 11px", fontSize: 13 }} />
+                      ) },
+                      { n: 3, label: "Page Purpose", node: (
+                        <input className="cl-input" value={aeoPagePurpose} onChange={e => setAeoPagePurpose(e.target.value)}
+                          placeholder={aeoSource === "brief" ? "Required — what this page sells/introduces" : "What this page sells/introduces"}
+                          style={{ ...inputBase, padding: "9px 11px", fontSize: 13, borderColor: aeoSource === "brief" && !aeoPagePurpose.trim() ? "#C8401A50" : "#E0DBD2" }} />
+                      ) },
+                      { n: 4, label: "Reference URL", node: (
+                        <input className="cl-input" value={aeoReferenceUrl} onChange={e => setAeoReferenceUrl(e.target.value)}
+                          placeholder="Context only, not fetched live" style={{ ...inputBase, padding: "9px 11px", fontSize: 13 }} />
+                      ) },
+                      { n: 5, label: "FAQ Direction", node: (
+                        <textarea className="cl-input" value={aeoFaqDirection} onChange={e => setAeoFaqDirection(e.target.value)} rows={3}
+                          placeholder="Custom instructions for how these FAQs should be written" style={{ ...inputBase, padding: "9px 11px", fontSize: 13, resize: "none" }} />
+                      ) },
+                      { n: 6, label: "Target Keywords", node: (
+                        <input className="cl-input" value={aeoKeywords} onChange={e => setAeoKeywords(e.target.value)}
+                          placeholder="Comma-separated" style={{ ...inputBase, padding: "9px 11px", fontSize: 13 }} />
+                      ) },
+                    ].map(f => (
+                      <div key={f.n}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                          <span style={{ width: 18, height: 18, borderRadius: "50%", background: "#0F1F3D", color: "#FFF", fontSize: 10, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{f.n}</span>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: "#1C1915" }}>{f.label}</span>
+                        </div>
+                        {f.node}
+                      </div>
+                    ))}
+
+                    <span style={{ display: "inline-block", width: "fit-content", padding: "3px 10px", background: "#EDEAE3", color: "#7A7570", borderRadius: 20, fontSize: 10, fontWeight: 700, fontFamily: "'Syne', sans-serif", letterSpacing: "0.04em", marginTop: 4 }}>OPTIONAL</span>
+
+                    <div>
+                      <p style={{ fontSize: 12, fontWeight: 600, color: "#1C1915", marginBottom: 6 }}>Tone</p>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                        {TONE_TAGS.map(t => <Tag key={t} label={t} active={aeoTones.includes(t)} onClick={() => toggleAeoTone(t)} />)}
+                      </div>
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 12, fontWeight: 600, color: "#1C1915", marginBottom: 6 }}>Target Audience</p>
+                      <input className="cl-input" value={aeoAudience} onChange={e => setAeoAudience(e.target.value)}
+                        placeholder="Comma-separated" style={{ ...inputBase, padding: "9px 11px", fontSize: 13 }} />
+                    </div>
+                    <div>
+                      <p style={{ fontSize: 12, fontWeight: 600, color: "#1C1915", marginBottom: 6 }}>Features to Highlight</p>
+                      <input className="cl-input" value={aeoFeatures} onChange={e => setAeoFeatures(e.target.value)}
+                        placeholder="Comma-separated" style={{ ...inputBase, padding: "9px 11px", fontSize: 13 }} />
+                    </div>
+                  </div>
+
+                  {/* Right: live prompt preview */}
+                  <div style={{ padding: "16px", background: "#FBFAF7" }}>
+                    <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590", marginBottom: 10 }}>Live Preview</p>
+                    <pre style={{ fontFamily: "'DM Mono', monospace", fontSize: 11.5, lineHeight: 1.8, color: "#7A7570", whiteSpace: "pre-wrap", margin: 0 }}>
+{"<page>\n"}
+{"Product Name: "}<span style={{ color: aeoPageName.trim() ? "#2A3D80" : "#C4BFB6" }}>{aeoPageName.trim() || "—"}</span>{"\n"}
+{"Page Type: "}<span style={{ color: aeoPageType.trim() ? "#2A3D80" : "#C4BFB6" }}>{aeoPageType.trim() || "—"}</span>{"\n"}
+{"Page Purpose: "}<span style={{ color: aeoPagePurpose.trim() ? "#2A3D80" : "#C4BFB6" }}>{aeoPagePurpose.trim() || "—"}</span>{"\n"}
+{"Reference URL: "}<span style={{ color: aeoReferenceUrl.trim() ? "#2A3D80" : "#C4BFB6" }}>{aeoReferenceUrl.trim() || "—"}</span>{"\n"}
+{"</page>\n\n"}
+{"<faq_direction>\n"}
+<span style={{ color: aeoFaqDirection.trim() ? "#2A3D80" : "#C4BFB6" }}>{aeoFaqDirection.trim() || "—"}</span>{"\n"}
+{"</faq_direction>\n\n"}
+{"<targeting>\n"}
+{"Keywords: "}<span style={{ color: aeoKeywords.trim() ? "#2A3D80" : "#C4BFB6" }}>{aeoKeywords.trim() || "—"}</span>{"\n"}
+{"Tone: "}<span style={{ color: aeoTones.length ? "#2A3D80" : "#C4BFB6" }}>{aeoTones.length ? aeoTones.join(", ") : "—"}</span>{"\n"}
+{"Audience: "}<span style={{ color: aeoAudience.trim() ? "#2A3D80" : "#C4BFB6" }}>{aeoAudience.trim() || "—"}</span>{"\n"}
+{"Features: "}<span style={{ color: aeoFeatures.trim() ? "#2A3D80" : "#C4BFB6" }}>{aeoFeatures.trim() || "—"}</span>{"\n"}
+{"</targeting>"}
+                    </pre>
+                  </div>
                 </div>
-                <div>
-                  <label style={labelStyle}>Page Purpose: {aeoSource === "brief" && <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#C8401A" }}>(required)</span>}</label>
-                  <input className="cl-input" value={aeoPagePurpose} onChange={e => setAeoPagePurpose(e.target.value)}
-                    placeholder="What this page is for and what it's selling/introducing"
-                    style={{ ...inputBase, borderColor: aeoSource === "brief" && !aeoPagePurpose.trim() ? "#C8401A50" : "#E0DBD2" }} />
-                </div>
-                <div>
-                  <label style={labelStyle}>Reference URL: <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, context only)</span></label>
-                  <input className="cl-input" value={aeoReferenceUrl} onChange={e => setAeoReferenceUrl(e.target.value)}
-                    placeholder="A page this relates to (not fetched live, used as context only)."
-                    style={inputBase} />
-                </div>
-              </div>
-
-              <div>
-                <label style={labelStyle}>Tone: <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, pick any)</span></label>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {TONE_TAGS.map(t => <Tag key={t} label={t} active={aeoTones.includes(t)} onClick={() => toggleAeoTone(t)} />)}
-                </div>
-              </div>
-
-              <div>
-                <label style={labelStyle}>Target Audience: <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional)</span></label>
-                <input className="cl-input" value={aeoAudience} onChange={e => setAeoAudience(e.target.value)}
-                  placeholder="List audience segments separated by commas, e.g. first-time buyers, busy parents, Gen Z gamers…"
-                  style={inputBase} />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Features to Highlight: <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, comma-separated)</span></label>
-                <input className="cl-input" value={aeoFeatures} onChange={e => setAeoFeatures(e.target.value)}
-                  placeholder="List specific features separated by commas, e.g. 30-hour battery, IPX7 rating, wireless charging"
-                  style={inputBase} />
-              </div>
-
-              <div>
-                <label style={labelStyle}>FAQ Direction <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional — custom instructions for how these FAQs should be written)</span></label>
-                <textarea className="cl-input" value={aeoFaqDirection} onChange={e => setAeoFaqDirection(e.target.value)} rows={3}
-                  placeholder="e.g. Base FAQs on what real shoppers actually ask when considering this — natural consumer language, verified in search or community posts, polished tone suitable for a brand FAQ page. Reference complementary products only when it addresses a confirmed shopper concern."
-                  style={{ ...inputBase, resize: "none" }} />
-              </div>
-
-              <div>
-                <label style={labelStyle}>Target Keywords <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, comma-separated)</span></label>
-                <input className="cl-input" value={aeoKeywords} onChange={e => setAeoKeywords(e.target.value)}
-                  placeholder="List target keywords separated by commas, e.g. wireless earbuds battery life, water resistance rating"
-                  style={inputBase} />
               </div>
 
               <button className="cl-btn" onClick={handleAeo} disabled={loading || !(aeoSource === "existing" ? aeoExistingFaqs : aeoBrief).trim() || (aeoSource === "brief" && !aeoPagePurpose.trim())}
@@ -1157,8 +1185,13 @@ Return:
           )}
 
           {!loading && !error && !result && (
-            <div style={{ padding: "60px 20px", textAlign: "left", color: "#B0ABA4" }}>
-              <p style={{ fontSize: 13, lineHeight: 1.6 }}>Fill in the form on the left and run it — results will show up here.</p>
+            <div style={{ padding: "48px 32px", textAlign: "left", background: "#FBFAF7", border: "1.5px dashed #DDD9D0", borderRadius: 12, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 10 }}>
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" style={{ opacity: 0.5 }}>
+                <rect x="3" y="4" width="18" height="14" rx="2" stroke="#B0ABA4" strokeWidth="1.5" />
+                <path d="M7 9h10M7 12.5h7M7 16h4" stroke="#B0ABA4" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 15, color: "#1C1915", margin: 0 }}>Your results will show up here</p>
+              <p style={{ fontSize: 13, color: "#9A9590", lineHeight: 1.6, margin: 0 }}>Fill in the form above, then run it — this space fills in with your generated copy, scores, and recommendations.</p>
             </div>
           )}
 
