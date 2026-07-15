@@ -27,6 +27,16 @@ const TONE_VOICE_INSTRUCTION = `Also assess "tone_voice_breakdown" across four i
 - enthusiasm: 0 = Matter-of-fact, 100 = Enthusiastic`;
 const TONE_VOICE_SCHEMA = `"tone_voice_breakdown":{"formality":{"percent":0,"note":""},"humor":{"percent":0,"note":""},"respectfulness":{"percent":0,"note":""},"enthusiasm":{"percent":0,"note":""}}`;
 
+const AEO_ANSWER_FORMAT_RULES = `Answer format rules — apply to every "answer" field:
+- State facts directly. Make the product name or feature the subject; you need not address the reader as "you".
+- Never make people the subject. Do not write what "users", "buyers", "customers", "reviewers", or "people" do, say, report, or experience — state the product fact itself. WRONG: "Buyers highlight the battery life." RIGHT: "The battery lasts more than a day."
+- Never cite or reference data, reviews, sources, or URLs in the answer text.
+- Open with one direct, declarative sentence stating the conclusion and echoing the question's core keyword.
+- Resolve the question, then stop — complete but not padded. As a rough cap, about 5 sentences and 3 short paragraphs.
+- Use paragraphs of 1-2 sentences with a blank line (\\n\\n) between them; never let a paragraph reach 3 sentences.
+- Use bullets (lines starting with "- ", one item per line, joined with \\n) for any procedure (a sequence of steps or actions) or any list of 3+ items, reasons, conditions, or options. If you'd otherwise join 3+ things with commas or "and"/"or", make them bullets instead. The opening sentence always stays a plain sentence, never a bullet.
+- Include specific values (numbers, dates, models) only when they're genuinely relevant to the question, not just because they're available.`;
+
 const API_URL = "/api/generate";
 const TRENDS_API_URL = "/api/trends";
 
@@ -225,6 +235,35 @@ function highlightText(text, keywordTerms = [], featureTerms = []) {
     );
   });
 }
+
+function AeoAnswer({ text, keywords = [], features = [] }) {
+  if (!text) return null;
+  const blocks = text.split(/\n\s*\n/).map(b => b.trim()).filter(Boolean);
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {blocks.map((block, i) => {
+        const lines = block.split("\n").map(l => l.trim()).filter(Boolean);
+        const isBulletBlock = lines.length > 0 && lines.every(l => l.startsWith("- "));
+        if (isBulletBlock) {
+          return (
+            <ul key={i} style={{ margin: 0, paddingLeft: 20, display: "flex", flexDirection: "column", gap: 4 }}>
+              {lines.map((line, j) => (
+                <li key={j} style={{ fontSize: 13, color: "#3A3730", lineHeight: 1.6 }}>
+                  {highlightText(line.replace(/^- /, ""), keywords, features)}
+                </li>
+              ))}
+            </ul>
+          );
+        }
+        return (
+          <p key={i} style={{ fontSize: 13, color: "#3A3730", lineHeight: 1.6, margin: 0 }}>
+            {highlightText(block, keywords, features)}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
 const scoreLabel = s => s >= 80 ? "Strong" : s >= 65 ? "Needs work" : "Weak";
 
 export default function CopyLab() {
@@ -254,6 +293,12 @@ export default function CopyLab() {
   const [aeoKeywords, setAeoKeywords] = useState("");
   const [aeoFeatures, setAeoFeatures] = useState("");
   const [aeoAudience, setAeoAudience] = useState("");
+  const [aeoPageName, setAeoPageName] = useState("");
+  const [aeoPageType, setAeoPageType] = useState("");
+  const [aeoPagePurpose, setAeoPagePurpose] = useState("");
+  const [aeoPageTemplate, setAeoPageTemplate] = useState("");
+  const [aeoReferenceUrl, setAeoReferenceUrl] = useState("");
+  const [aeoFaqDirection, setAeoFaqDirection] = useState("");
 
   const [benchBrief, setBenchBrief] = useState("");
   const [benchAudience, setBenchAudience] = useState("");
@@ -325,13 +370,33 @@ Return:
   const handleAeo = async () => {
     const sourceContent = aeoSource === "existing" ? aeoExistingFaqs : aeoBrief;
     if (!sourceContent.trim()) return;
+    if (aeoSource === "brief" && !aeoPagePurpose.trim()) {
+      setError("Add a Page Purpose before generating — the ranking and page-fit logic below depends on knowing what this specific page is for.");
+      return;
+    }
     setLoading(true); setError(null); setResult(null);
     try {
-      const sys = `You are an AEO (Answer Engine Optimization) specialist and UX copywriter. You write FAQs designed to be pulled directly into AI-generated answers (ChatGPT, Google AI Overviews, Perplexity, voice assistants), meaning: each answer leads with the direct answer in the first sentence, uses natural question phrasing real people actually search/ask, stays concise and self-contained (no "as mentioned above"), and uses concrete specifics over vague marketing language. ${SENTENCE_CASE_RULE} Return ONLY valid JSON. No markdown, no preamble.`;
+      const sys = `You are an AEO (Answer Engine Optimization) specialist and UX copywriter. You write FAQs designed to be pulled directly into AI-generated answers (ChatGPT, Google AI Overviews, Perplexity, voice assistants), meaning: each answer leads with the direct answer in the first sentence, uses natural question phrasing real people actually search/ask, stays concise and self-contained (no "as mentioned above"), and uses concrete specifics over vague marketing language. ${SENTENCE_CASE_RULE}
+
+${AEO_ANSWER_FORMAT_RULES}
+
+Return ONLY valid JSON. No markdown, no preamble.`;
 
       const task = aeoSource === "existing"
         ? `Revise the following FAQs to be AEO-optimized. Keep the core information but rewrite for directness and answer-engine friendliness. Add or split questions if it improves answerability. Existing FAQs:\n"""\n${aeoExistingFaqs}\n"""`
-        : `Write 5-8 AEO-optimized FAQs from this brief:\n"""\n${aeoBrief}\n"""`;
+        : `Generate at least 10 FAQs for this brief that resolve what real users actually worry about when considering this. Brief:
+"""
+${aeoBrief}
+"""
+
+Your job is judgment, not coverage:
+- Draw on realistic patterns of what shoppers actually search, ask, and worry about in this category, informed by your general knowledge of consumer behavior, reviews, and forum/support questions in this space. This is reasoning from training knowledge, not live retrieval — don't claim or imply you looked anything up. Ground each question in a real, recognizable shopper concern rather than inventing a plausible-sounding one from imagination.
+- Derive questions from real concern clusters — don't invent a question first and then rationalize why someone might ask it.
+- Rank by how much each matters to real users, highest first.
+- Write only questions you're genuinely confident real shoppers would ask. One distinct topic per item, never repeated.
+- Each Q&A must be self-contained — no cross-references to other FAQs on this page.
+- Page fit comes before general relevance. A question must serve THIS page's Purpose and FAQ Direction (given below) — not just be a commonly-asked question in the category. A question that's common in general but belongs to a different type of page (e.g. a detailed product-spec question on a promotional/campaign page) does NOT qualify here, however common it is elsewhere. Before including an item, ask: would a visitor to THIS specific page actually ask this here? If it fits a different page better, drop it.
+- The FAQ Direction below is a relevance filter, not a checklist to follow item-by-item: cover a more pressing on-topic concern first if it's clearly more important, and skip common topics that don't fit this specific page.`;
 
       const keywordBlock = aeoKeywords.trim()
         ? `\nTarget keywords to work in naturally where relevant: ${aeoKeywords.trim()}`
@@ -343,11 +408,21 @@ Return:
         ? `\nTarget audience: ${aeoAudience.trim()} — phrase questions the way this audience would actually ask them.`
         : "";
 
-      const usr = `${task}${keywordBlock}${featuresBlock}${audienceBlock}
+      const pageFields = [
+        aeoPageName.trim() && `Page/Promotion Name: ${aeoPageName.trim()}`,
+        aeoPageType.trim() && `Page Type: ${aeoPageType.trim()}`,
+        aeoPagePurpose.trim() && `Page Purpose: ${aeoPagePurpose.trim()}`,
+        aeoPageTemplate.trim() && `Page Template: ${aeoPageTemplate.trim()}`,
+        aeoReferenceUrl.trim() && `Reference URL: ${aeoReferenceUrl.trim()}`,
+      ].filter(Boolean);
+      const pageContextBlock = pageFields.length ? `\n\nPage context:\n${pageFields.join("\n")}` : "";
+      const faqDirectionBlock = aeoFaqDirection.trim() ? `\n\nFAQ direction: ${aeoFaqDirection.trim()}` : "";
+
+      const usr = `${task}${keywordBlock}${featuresBlock}${audienceBlock}${pageContextBlock}${faqDirectionBlock}
 For each FAQ, score "directness" (0-100: does the first sentence of the answer fully resolve the question with no throat-clearing).
 Also identify which of the target keywords (if any) were actually used across the FAQs, and which features/details were highlighted.
 Return:
-{"faqs":[{"question":"phrased as a real user would ask","answer":"leads with the direct answer, then supporting detail","directness":0}],"keywords_used":["keyword actually used"],"features_highlighted":["feature actually mentioned"],"aeo_notes":"1-2 sentences of overall guidance or gaps to address"}`;
+{"faqs":[{"question":"phrased as a real user would ask","answer":"formatted per the answer format rules above — use \\n\\n between paragraphs and \\n-separated \"- \" bullets where specified","directness":0}],"keywords_used":["keyword actually used"],"features_highlighted":["feature actually mentioned"],"aeo_notes":"1-2 sentences of overall guidance or gaps to address"}`;
 
       const aeoTrendsKeyword = aeoKeywords.trim().split(",")[0]?.trim() || sourceContent.split(/\s+/).slice(0, 4).join(" ");
       const [data, trends] = await Promise.all([
@@ -573,6 +648,37 @@ Return:
                 </div>
               )}
 
+              <div style={{ borderTop: "1px solid #DDD9D0", paddingTop: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+                <p style={{ ...labelStyle, marginBottom: -2 }}>Page Context {aeoSource === "brief" ? <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#C8401A" }}>(Purpose required to generate)</span> : <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional)</span>}</p>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <input className="cl-input" value={aeoPageName} onChange={e => setAeoPageName(e.target.value)}
+                    placeholder="Page/promotion name, e.g. Holiday"
+                    style={inputBase} />
+                  <input className="cl-input" value={aeoPageType} onChange={e => setAeoPageType(e.target.value)}
+                    placeholder="Page type, e.g. Promotion"
+                    style={inputBase} />
+                </div>
+                <input className="cl-input" value={aeoPagePurpose} onChange={e => setAeoPagePurpose(e.target.value)}
+                  placeholder={aeoSource === "brief" ? "Page purpose (required) — what this page is for and what it's selling/introducing" : "Page purpose — what this page is for and what it's selling/introducing"}
+                  style={{ ...inputBase, borderColor: aeoSource === "brief" && !aeoPagePurpose.trim() ? "#C8401A50" : "#E0DBD2" }} />
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <input className="cl-input" value={aeoPageTemplate} onChange={e => setAeoPageTemplate(e.target.value)}
+                    placeholder="Page template, e.g. AEM"
+                    style={inputBase} />
+                  <input className="cl-input" value={aeoReferenceUrl} onChange={e => setAeoReferenceUrl(e.target.value)}
+                    placeholder="Reference URL (for context, not fetched live)"
+                    style={inputBase} />
+                </div>
+              </div>
+
+              <div>
+                <label style={labelStyle}>FAQ Direction <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional — custom instructions for how these FAQs should be written)</span></label>
+                <textarea className="cl-input" value={aeoFaqDirection} onChange={e => setAeoFaqDirection(e.target.value)} rows={3}
+                  placeholder="e.g. Base FAQs on what real shoppers actually ask when considering this — natural consumer language, verified in search or community posts, polished tone suitable for a brand FAQ page. Reference complementary products only when it addresses a confirmed shopper concern."
+                  style={{ ...inputBase, resize: "none" }} />
+              </div>
+
               <div>
                 <label style={labelStyle}>Target Keywords <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#B0ABA4" }}>(optional, comma-separated)</span></label>
                 <input className="cl-input" value={aeoKeywords} onChange={e => setAeoKeywords(e.target.value)}
@@ -594,7 +700,7 @@ Return:
                   style={inputBase} />
               </div>
 
-              <button className="cl-btn" onClick={handleAeo} disabled={loading || !(aeoSource === "existing" ? aeoExistingFaqs : aeoBrief).trim()}
+              <button className="cl-btn" onClick={handleAeo} disabled={loading || !(aeoSource === "existing" ? aeoExistingFaqs : aeoBrief).trim() || (aeoSource === "brief" && !aeoPagePurpose.trim())}
                 style={{ padding: "15px", background: "#C8401A", color: "#FFF", border: "none", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, letterSpacing: "0.04em", cursor: "pointer", transition: "background 0.15s" }}>
                 {loading ? "Optimizing…" : "Optimize for AEO →"}
               </button>
@@ -859,7 +965,9 @@ Return:
                           </span>
                         )}
                       </div>
-                      <p style={{ fontSize: 13, color: "#3A3730", lineHeight: 1.6, marginBottom: 10 }}>{highlightText(f.answer, aeoKeywords.split(","), aeoFeatures.split(","))}</p>
+                      <div style={{ marginBottom: 10 }}>
+                        <AeoAnswer text={f.answer} keywords={aeoKeywords.split(",")} features={aeoFeatures.split(",")} />
+                      </div>
                       <button className="cl-copy" onClick={() => handleCopy(`${f.question}\n${f.answer}`, `faq-${i}`)}
                         style={{ padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === `faq-${i}` ? "#1E7A48" : "#9A9590" }}>
                         {copied === `faq-${i}` ? "✓ Copied" : "Copy Q&A"}
