@@ -593,7 +593,7 @@ Return:
                   style={inputBase} />
               </Field>
 
-              <Field label="Page Type:" hint="The format of copy being written — controls length, structure, and tone conventions.">
+              <Field label="Feature:" hint="The copy element being written — controls length, structure, and tone conventions.">
                 <select className="cl-input" value={copyType} onChange={e => setCopyType(e.target.value)}
                   style={{ ...inputBase, cursor: "pointer" }}>
                   {activeCopyTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -646,7 +646,7 @@ Return:
                   style={inputBase} />
               </Field>
 
-              <Field label="Page Type:" hint="The format of the copy you're reviewing — affects which conventions it's judged against.">
+              <Field label="Feature:" hint="The copy element you're reviewing — affects which conventions it's judged against.">
                 <select className="cl-input" value={analyzeFormat} onChange={e => setAnalyzeFormat(e.target.value)}
                   style={{ ...inputBase, cursor: "pointer" }}>
                   {ANALYZE_COPY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
