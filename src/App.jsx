@@ -1,17 +1,34 @@
 import { useState } from "react";
 
-const COPY_TYPES = [
+const GENERAL_COPY_TYPES = [
   { value: "headline", label: "Headline" },
   { value: "sub_headline", label: "Sub Headline" },
   { value: "body", label: "Body" },
-  { value: "cta", label: "CTA" },
   { value: "usp", label: "USP" },
-  { value: "social_caption", label: "Social Caption" },
+];
+
+const UX_COPY_TYPES = [
+  { value: "cta", label: "CTA" },
   { value: "error_message", label: "Error Message" },
   { value: "empty_state", label: "Empty State" },
   { value: "tooltip", label: "Tooltip" },
   { value: "microcopy", label: "Microcopy" },
+  { value: "onboarding_message", label: "Onboarding Message" },
+  { value: "push_notification", label: "Push Notification" },
+  { value: "confirmation_message", label: "Confirmation Message" },
+  { value: "form_field_helper", label: "Form Field / Helper Text" },
 ];
+
+const SOCIAL_COPY_TYPES = [
+  { value: "social_caption", label: "Social Caption" },
+  { value: "story_reel_caption", label: "Story / Reel Caption" },
+  { value: "hashtag_set", label: "Hashtag Set" },
+  { value: "community_reply", label: "Community Reply" },
+  { value: "social_ad_copy", label: "Social Ad Copy" },
+  { value: "bio_profile_copy", label: "Bio / Profile Copy" },
+];
+
+const COPY_TYPES = [...GENERAL_COPY_TYPES, ...UX_COPY_TYPES, ...SOCIAL_COPY_TYPES];
 
 const TONE_TAGS = [
   "Confident", "Playful", "Direct", "Warm",
@@ -506,6 +523,8 @@ Return:
     setLoading(false);
   };
 
+  const activeCopyTypes = mode === "ux" ? UX_COPY_TYPES : mode === "social" ? SOCIAL_COPY_TYPES : GENERAL_COPY_TYPES;
+
   return (
     <>
       <style>{`
@@ -543,11 +562,16 @@ Return:
           </span>
 
           <div style={{ display: "flex", background: "#E8E4DC", borderRadius: 7, padding: 3, gap: 2, width: "fit-content", maxWidth: "100%", flexWrap: "nowrap", overflowX: "auto" }}>
-            {["generate", "analyze", "aeo", "benchmark"].map(m => (
+            {["generate", "ux", "social", "analyze", "aeo", "benchmark"].map(m => (
               <button key={m} className={`cl-mode ${mode === m ? "on" : ""}`}
-                onClick={() => { setMode(m); setResult(null); setError(null); }}
+                onClick={() => {
+                  setMode(m); setResult(null); setError(null);
+                  if (m === "generate") setCopyType(GENERAL_COPY_TYPES[0].value);
+                  else if (m === "ux") setCopyType(UX_COPY_TYPES[0].value);
+                  else if (m === "social") setCopyType(SOCIAL_COPY_TYPES[0].value);
+                }}
                 style={{ padding: "7px 12px", borderRadius: 5, border: "none", cursor: "pointer", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 12, letterSpacing: "0.03em", background: "transparent", color: "#7A7570", transition: "all 0.15s", flexShrink: 0, whiteSpace: "nowrap" }}>
-                {m === "generate" ? "Generate" : m === "analyze" ? "Analyze" : m === "aeo" ? "AEO" : "Benchmark"}
+                {m === "generate" ? "Generate" : m === "ux" ? "UX/UI Copy" : m === "social" ? "Social Copy" : m === "analyze" ? "Analyze" : m === "aeo" ? "AEO" : "Benchmark"}
               </button>
             ))}
           </div>
@@ -558,8 +582,8 @@ Return:
 
           <div className="cl-form-col" style={{ width: "100%" }}>
 
-          {/* ── GENERATE FORM ── */}
-          {mode === "generate" && (
+          {/* ── GENERATE / UX-UI / SOCIAL FORM (shared) ── */}
+          {(mode === "generate" || mode === "ux" || mode === "social") && (
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               <Field label="Product Name:" required
                 hint="What this is about — use a generic description rather than the exact brand/product name. Exact names can trigger content filters and cause failed generations.">
@@ -571,7 +595,7 @@ Return:
               <Field label="Page Type:" hint="The format of copy being written — controls length, structure, and tone conventions.">
                 <select className="cl-input" value={copyType} onChange={e => setCopyType(e.target.value)}
                   style={{ ...inputBase, cursor: "pointer" }}>
-                  {COPY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  {activeCopyTypes.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </Field>
 
@@ -798,7 +822,7 @@ Return:
                 ))}
               </div>
               <p style={{ color: "#A0998F", fontSize: 13 }}>
-                {mode === "generate" ? "Crafting 3 strategic variants…" : mode === "analyze" ? "Running full copy audit…" : mode === "aeo" ? "Optimizing for answer engines…" : "Researching trends and competitors…"}
+                {(mode === "generate" || mode === "ux" || mode === "social") ? "Crafting 3 strategic variants…" : mode === "analyze" ? "Running full copy audit…" : mode === "aeo" ? "Optimizing for answer engines…" : "Researching trends and competitors…"}
               </p>
             </div>
           )}
