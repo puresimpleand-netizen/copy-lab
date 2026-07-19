@@ -29,6 +29,7 @@ const SOCIAL_COPY_TYPES = [
 ];
 
 const COPY_TYPES = [...GENERAL_COPY_TYPES, ...UX_COPY_TYPES, ...SOCIAL_COPY_TYPES];
+const ANALYZE_COPY_TYPES = GENERAL_COPY_TYPES.filter(t => t.value !== "usp");
 
 const TONE_TAGS = [
   "Confident", "Playful", "Direct", "Warm",
@@ -648,7 +649,7 @@ Return:
               <Field label="Page Type:" hint="The format of the copy you're reviewing — affects which conventions it's judged against.">
                 <select className="cl-input" value={analyzeFormat} onChange={e => setAnalyzeFormat(e.target.value)}
                   style={{ ...inputBase, cursor: "pointer" }}>
-                  {COPY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  {ANALYZE_COPY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </Field>
 
