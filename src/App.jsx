@@ -37,6 +37,13 @@ const TONE_TAGS = [
   "Bold", "Empowering", "Witty", "Grounded",
 ];
 
+const JOURNEY_STAGES = [
+  "Onboarding", "Core Task", "Error / Recovery",
+  "Empty State", "Success / Confirmation", "Destructive Action", "Settings",
+];
+
+const EMOTIONAL_STATES = ["Neutral", "Frustrated", "Anxious", "Confused", "Delighted"];
+
 const SENTENCE_CASE_RULE = "Grammar rule: use sentence case for all copy — capitalize only the first word and proper nouns, never Title Case.";
 const TONE_VOICE_INSTRUCTION = `Also assess "tone_voice_breakdown" across four industry-standard tone dimensions (Nielsen Norman Group's four dimensions of tone of voice). For each, give a "percent" (0-100) placing the copy on that scale, and a one-sentence "note" explaining why:
 - formality: 0 = Formal, 100 = Casual
@@ -317,6 +324,15 @@ export default function CopyLab() {
   const [generateAudience, setGenerateAudience] = useState("");
   const [generateFeatures, setGenerateFeatures] = useState("");
 
+  const [uxFeatureType, setUxFeatureType] = useState(UX_COPY_TYPES[0].value);
+  const [uxProductName, setUxProductName] = useState("");
+  const [uxJourneyStage, setUxJourneyStage] = useState(JOURNEY_STAGES[0]);
+  const [uxScreenContext, setUxScreenContext] = useState("");
+  const [uxEmotionalState, setUxEmotionalState] = useState("Neutral");
+  const [uxVoice, setUxVoice] = useState([]);
+  const [uxCharacterConstraint, setUxCharacterConstraint] = useState("");
+  const [uxAudience, setUxAudience] = useState("");
+
   const [analyzeProductName, setAnalyzeProductName] = useState("");
   const [analyzeFormat, setAnalyzeFormat] = useState("headline");
   const [inputCopy, setInputCopy] = useState("");
@@ -347,6 +363,7 @@ export default function CopyLab() {
   const toggleTone = t => setTones(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
   const toggleAnalyzeTone = t => setAnalyzeTones(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
   const toggleAeoTone = t => setAeoTones(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
+  const toggleUxVoice = t => setUxVoice(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
 
   const handleCopy = (text, id) => {
     navigator.clipboard.writeText(text);
@@ -380,6 +397,44 @@ Return:
         fetchTrendingKeywords(generateKeyword.trim() || generateProductName.trim()),
       ]);
       setResult({ type: "generate", ...data, trendsKeyword: generateKeyword.trim() || generateProductName.trim(), trendsData: trends });
+      setSelectedV(0);
+    } catch (e) {
+      setError(describeError(e));
+    }
+    setLoading(false);
+  };
+
+  const handleUx = async () => {
+    if (!uxProductName.trim() || !uxScreenContext.trim()) return;
+    setLoading(true); setError(null); setResult(null);
+    try {
+      const sys = `You are a senior UX writer specializing in product microcopy — CTAs, error messages, empty states, tooltips, confirmations, onboarding. You work within a Voice & Tone system: Voice is the brand's constant personality across every screen; Tone is how that voice flexes moment-to-moment based on what the user is going through. The voice never changes; the delivery (warmth, brevity, directness, reassurance) does. ${SENTENCE_CASE_RULE} Return ONLY valid JSON. No markdown, no preamble.`;
+
+      const featureLabel = UX_COPY_TYPES.find(t => t.value === uxFeatureType)?.label || uxFeatureType;
+      const emotionBlock = uxEmotionalState !== "Neutral"
+        ? `\nUser's emotional state right now: ${uxEmotionalState} — let this shape tone (warmth, brevity, directness, reassurance) while keeping the underlying voice identical to the Voice traits below.`
+        : `\nUser's emotional state right now: Neutral — standard tone, no special emotional handling needed.`;
+      const constraintBlock = uxCharacterConstraint.trim()
+        ? `\nCharacter limit: ${uxCharacterConstraint.trim()} — every variant must fit within this. Report the actual character count for each.`
+        : "";
+      const audienceBlock = uxAudience.trim()
+        ? `\nTarget audience: ${uxAudience.trim()}`
+        : "";
+
+      const usr = `Write 3 distinct variants of ${featureLabel.toLowerCase()} copy.
+
+Product/Feature Name: ${uxProductName.trim()}
+User Journey Stage: ${uxJourneyStage}
+Screen Context: ${uxScreenContext.trim()}${emotionBlock}
+Voice (constant brand personality): ${uxVoice.length ? uxVoice.join(", ") : "balanced and on-brand"}${constraintBlock}${audienceBlock}
+
+For each variant, score (0-100) "tone_match" (how well it reflects the Voice traits, correctly flexed for the user's emotional state and journey stage — not generically "nice") and report "character_count" (the actual character count of the copy).
+Also write a "narrative": 2-3 sentences on how these variants navigate this specific emotional moment while keeping the brand voice recognizable and consistent.
+Return:
+{"variants":[{"copy":"","angle":"2-3 word label","rationale":"1-2 sentences on the UX reasoning","strength":"1 sentence","watch_out":"1 honest limitation","tone_match":0,"character_count":0}],"narrative":""}`;
+
+      const data = await callClaude(sys, usr, 3000);
+      setResult({ type: "generate", ...data });
       setSelectedV(0);
     } catch (e) {
       setError(describeError(e));
@@ -524,7 +579,7 @@ Return:
     setLoading(false);
   };
 
-  const activeCopyTypes = mode === "ux" ? UX_COPY_TYPES : mode === "social" ? SOCIAL_COPY_TYPES : GENERAL_COPY_TYPES;
+  const activeCopyTypes = mode === "social" ? SOCIAL_COPY_TYPES : GENERAL_COPY_TYPES;
 
   return (
     <>
@@ -568,7 +623,7 @@ Return:
                 onClick={() => {
                   setMode(m); setResult(null); setError(null);
                   if (m === "generate") setCopyType(GENERAL_COPY_TYPES[0].value);
-                  else if (m === "ux") setCopyType(UX_COPY_TYPES[0].value);
+                  else if (m === "ux") setUxFeatureType(UX_COPY_TYPES[0].value);
                   else if (m === "social") setCopyType(SOCIAL_COPY_TYPES[0].value);
                 }}
                 style={{ padding: "7px 12px", borderRadius: 5, border: "none", cursor: "pointer", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 12, letterSpacing: "0.03em", background: "transparent", color: "#7A7570", transition: "all 0.15s", flexShrink: 0, whiteSpace: "nowrap" }}>
@@ -584,7 +639,7 @@ Return:
           <div className="cl-form-col" style={{ width: "100%" }}>
 
           {/* ── GENERATE / UX-UI / SOCIAL FORM (shared) ── */}
-          {(mode === "generate" || mode === "ux" || mode === "social") && (
+          {(mode === "generate" || mode === "social") && (
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               <Field label="Product Name:" required
                 hint="What this is about — use a generic description rather than the exact brand/product name. Exact names can trigger content filters and cause failed generations.">
@@ -631,6 +686,69 @@ Return:
               </Field>
 
               <button className="cl-btn" onClick={handleGenerate} disabled={loading || !generateProductName.trim() || !generatePagePurpose.trim()}
+                style={{ padding: "15px", background: "#C8401A", color: "#FFF", border: "none", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, letterSpacing: "0.04em", cursor: "pointer", transition: "background 0.15s" }}>
+                {loading ? "Generating…" : "Generate options →"}
+              </button>
+            </div>
+          )}
+
+          {/* ── UX/UI COPY FORM (distinct — journey, screen context, voice/tone system) ── */}
+          {mode === "ux" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+              <Field label="Product/Feature Name:" required
+                hint="What this relates to — use a generic description rather than the exact brand/product name.">
+                <input className="cl-input" value={uxProductName} onChange={e => setUxProductName(e.target.value)}
+                  placeholder="e.g. account settings, checkout flow"
+                  style={inputBase} />
+              </Field>
+
+              <Field label="Feature:" hint="The UX element being written — controls length and structure conventions.">
+                <select className="cl-input" value={uxFeatureType} onChange={e => setUxFeatureType(e.target.value)}
+                  style={{ ...inputBase, cursor: "pointer" }}>
+                  {UX_COPY_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </Field>
+
+              <Field label="Journey Stage:" hint="Where this sits in the user's flow — shapes urgency and how much explanation is warranted.">
+                <select className="cl-input" value={uxJourneyStage} onChange={e => setUxJourneyStage(e.target.value)}
+                  style={{ ...inputBase, cursor: "pointer" }}>
+                  {JOURNEY_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </Field>
+
+              <Field label="Screen Context:" required
+                hint="Where exactly this text lives and what the user just did or is about to do — e.g. 'modal after tapping Delete Account'.">
+                <textarea className="cl-input" value={uxScreenContext} onChange={e => setUxScreenContext(e.target.value)} rows={3}
+                  placeholder="e.g. Inline validation under the email field on signup"
+                  style={{ ...inputBase, resize: "none" }} />
+              </Field>
+
+              <Field label="User Emotional State:" hint="How the user likely feels right now — Voice stays constant, but Tone flexes to meet this moment.">
+                <select className="cl-input" value={uxEmotionalState} onChange={e => setUxEmotionalState(e.target.value)}
+                  style={{ ...inputBase, cursor: "pointer" }}>
+                  {EMOTIONAL_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </Field>
+
+              <Field label="Voice:" hint="The brand's constant personality — this shouldn't change screen to screen, only how it's delivered does.">
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {TONE_TAGS.map(t => <Tag key={t} label={t} active={uxVoice.includes(t)} onClick={() => toggleUxVoice(t)} />)}
+                </div>
+              </Field>
+
+              <Field label="Character Constraint:" hint="Optional — a hard limit for buttons, tooltips, and toasts, e.g. '40 characters'.">
+                <input className="cl-input" value={uxCharacterConstraint} onChange={e => setUxCharacterConstraint(e.target.value)}
+                  placeholder="e.g. 40 characters"
+                  style={inputBase} />
+              </Field>
+
+              <Field label="Target Audience:" hint="Optional — comma-separated audience segments this needs to speak to.">
+                <input className="cl-input" value={uxAudience} onChange={e => setUxAudience(e.target.value)}
+                  placeholder="e.g. first-time buyers, busy parents, Gen Z gamers"
+                  style={inputBase} />
+              </Field>
+
+              <button className="cl-btn" onClick={handleUx} disabled={loading || !uxProductName.trim() || !uxScreenContext.trim()}
                 style={{ padding: "15px", background: "#C8401A", color: "#FFF", border: "none", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, letterSpacing: "0.04em", cursor: "pointer", transition: "background 0.15s" }}>
                 {loading ? "Generating…" : "Generate options →"}
               </button>
@@ -884,7 +1002,7 @@ Return:
                       </button>
                     </div>
 
-                    {(typeof v.tone_match === "number" || typeof v.keyword_use === "number") && (
+                    {(typeof v.tone_match === "number" || typeof v.keyword_use === "number" || typeof v.character_count === "number") && (
                       <div style={{ display: "flex", gap: 8 }}>
                         {typeof v.tone_match === "number" && (
                           <div style={{ flex: 1, padding: "10px 12px", background: "#FFF", border: "1px solid #DDD9D0", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -896,6 +1014,14 @@ Return:
                           <div style={{ flex: 1, padding: "10px 12px", background: "#FFF", border: "1px solid #DDD9D0", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                             <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9A9590" }}>Keyword Use</span>
                             <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 500, color: scoreColor(v.keyword_use) }}>{v.keyword_use}%</span>
+                          </div>
+                        )}
+                        {typeof v.character_count === "number" && (
+                          <div style={{ flex: 1, padding: "10px 12px", background: "#FFF", border: `1px solid ${mode === "ux" && uxCharacterConstraint.trim() && v.character_count > parseInt(uxCharacterConstraint) ? "#C8401A50" : "#DDD9D0"}`, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                            <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9A9590" }}>Characters</span>
+                            <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 500, color: mode === "ux" && uxCharacterConstraint.trim() && v.character_count > parseInt(uxCharacterConstraint) ? "#C8401A" : "#1C1915" }}>
+                              {v.character_count}{mode === "ux" && uxCharacterConstraint.trim() ? ` / ${uxCharacterConstraint.trim()}` : ""}
+                            </span>
                           </div>
                         )}
                       </div>
