@@ -360,12 +360,6 @@ export default function CopyLab() {
   const [benchBrief, setBenchBrief] = useState("");
   const [benchAudience, setBenchAudience] = useState("");
 
-  const [disclaimerSource, setDisclaimerSource] = useState("create"); // "create" | "revise"
-  const [disclaimerUrl, setDisclaimerUrl] = useState("");
-  const [disclaimerContext, setDisclaimerContext] = useState("");
-  const [disclaimerExisting, setDisclaimerExisting] = useState("");
-  const [disclaimerPageText, setDisclaimerPageText] = useState(""); // manual fallback if fetch fails
-
   const [altMode, setAltMode] = useState("image"); // "image" | "video"
   const [altImageFile, setAltImageFile] = useState(null);
   const [altImagePreview, setAltImagePreview] = useState("");
@@ -594,57 +588,6 @@ Return:
     setLoading(false);
   };
 
-  const handleDisclaimers = async () => {
-    if (!disclaimerUrl.trim() && !disclaimerPageText.trim()) return;
-    if (disclaimerSource === "revise" && !disclaimerExisting.trim()) return;
-    setLoading(true); setError(null); setResult(null);
-    try {
-      let pageText = disclaimerPageText.trim();
-      let fetchedUrl = "";
-
-      if (!pageText && disclaimerUrl.trim()) {
-        const fetchRes = await fetch("/api/fetch-samsung-page", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: disclaimerUrl.trim() }),
-        });
-        const fetchData = await fetchRes.json();
-        if (!fetchRes.ok) {
-          setError(fetchData?.error + " You can paste the page content manually in the fallback field below instead.");
-          setLoading(false);
-          return;
-        }
-        pageText = fetchData.text;
-        fetchedUrl = fetchData.url;
-      }
-
-      const sys = `You are a legal-conscious brand copywriter who drafts disclaimer language for Samsung marketing and product pages. You are NOT a lawyer, and you always make that clear: your output is a starting draft for human legal/compliance review, never final legal copy. Follow Samsung's typical disclaimer conventions: concise, footnote-style, asterisk or numbered markers, precise about conditions/exclusions, no absolute claims without qualification. ${SENTENCE_CASE_RULE} Return ONLY valid JSON. No markdown, no preamble.`;
-
-      const task = disclaimerSource === "revise"
-        ? `Revise this existing disclaimer to be clearer and more precise, keeping its legal intent intact:\n"""\n${disclaimerExisting.trim()}\n"""`
-        : `Draft disclaimer(s) needed for this page/context.`;
-
-      const usr = `${task}
-${disclaimerContext.trim() ? `\nWhat needs disclaiming: ${disclaimerContext.trim()}` : ""}
-${fetchedUrl ? `\nReference page: ${fetchedUrl}` : ""}
-
-Source page content (use this to identify claims that likely need disclaiming — battery/performance claims, pricing/financing terms, trade-in offers, availability, AI feature limitations, comparisons, etc.):
-"""
-${pageText.slice(0, 10000)}
-"""
-
-Identify the specific claims on this page that need disclaiming, and draft one disclaimer per claim (or revise the one given). For each, note which claim/section it applies to and a suggested placement (e.g. "footnote under hero", "near CTA", "bottom of page in fine print").
-Return:
-{"disclaimers":[{"disclaimer_text":"","applies_to":"","placement_note":""}],"source_notes":"1-2 sentences on what was found on the page relevant to disclaimers"}`;
-
-      const data = await callClaude(sys, usr, 3200);
-      setResult({ type: "disclaimers", ...data });
-    } catch (e) {
-      setError(describeError(e));
-    }
-    setLoading(false);
-  };
-
   const handleAltImageFile = (file) => {
     if (!file) return;
     setAltImageFile(file);
@@ -754,7 +697,7 @@ Return ONLY valid JSON, no markdown, no preamble:
           </span>
 
           <div style={{ display: "flex", background: "#E8E4DC", borderRadius: 7, padding: 3, gap: 2, width: "fit-content", maxWidth: "100%", flexWrap: "nowrap", overflowX: "auto" }}>
-            {["generate", "analyze", "ux", "social", "aeo", "benchmark", "disclaimers", "alttext"].map(m => (
+            {["generate", "analyze", "ux", "social", "aeo", "benchmark", "alttext"].map(m => (
               <button key={m} className={`cl-mode ${mode === m ? "on" : ""}`}
                 onClick={() => {
                   setMode(m); setResult(null); setError(null);
@@ -763,7 +706,7 @@ Return ONLY valid JSON, no markdown, no preamble:
                   else if (m === "social") setCopyType(SOCIAL_COPY_TYPES[0].value);
                 }}
                 style={{ padding: "7px 12px", borderRadius: 5, border: "none", cursor: "pointer", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 12, letterSpacing: "0.03em", background: "transparent", color: "#7A7570", transition: "all 0.15s", flexShrink: 0, whiteSpace: "nowrap" }}>
-                {m === "generate" ? "Generate copy" : m === "analyze" ? "Analyze copy" : m === "ux" ? "UX/UI Copy" : m === "social" ? "Social Copy" : m === "aeo" ? "AEO" : m === "benchmark" ? "Benchmark" : m === "disclaimers" ? "Disclaimers" : "Alt Text"}
+                {m === "generate" ? "Generate copy" : m === "analyze" ? "Analyze copy" : m === "ux" ? "UX/UI Copy" : m === "social" ? "Social Copy" : m === "aeo" ? "AEO" : m === "benchmark" ? "Benchmark" : "Alt Text"}
               </button>
             ))}
           </div>
@@ -1064,61 +1007,6 @@ Return ONLY valid JSON, no markdown, no preamble:
             </div>
           )}
 
-          {/* ── DISCLAIMERS FORM ── */}
-          {mode === "disclaimers" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-              <div style={{ padding: "12px 14px", background: "#FFF8F0", border: "1px solid #C0782030", borderRadius: 8 }}>
-                <p style={{ fontSize: 12, color: "#7A4E10", lineHeight: 1.55, margin: 0 }}>
-                  ⚠ Drafts only — not legal advice. Everything here needs human legal/compliance review before publishing.
-                </p>
-              </div>
-
-              <Field label="Source:" hint="Draft new disclaimers for a page, or tighten up one you already have.">
-                <div style={{ display: "flex", background: "#E8E4DC", borderRadius: 7, padding: 3, gap: 2 }}>
-                  {["create", "revise"].map(s => (
-                    <button key={s} className={`cl-mode ${disclaimerSource === s ? "on" : ""}`}
-                      onClick={() => setDisclaimerSource(s)}
-                      style={{ flex: 1, padding: "9px 10px", borderRadius: 5, border: "none", cursor: "pointer", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 12, letterSpacing: "0.03em", background: "transparent", color: "#7A7570", transition: "all 0.15s" }}>
-                      {s === "create" ? "Create new" : "Revise existing"}
-                    </button>
-                  ))}
-                </div>
-              </Field>
-
-              {disclaimerSource === "revise" && (
-                <Field label="Existing Disclaimer:" required hint="Paste the current disclaimer text you want tightened up.">
-                  <textarea className="cl-input" value={disclaimerExisting} onChange={e => setDisclaimerExisting(e.target.value)} rows={3}
-                    placeholder="Paste the current disclaimer text."
-                    style={{ ...inputBase, resize: "none" }} />
-                </Field>
-              )}
-
-              <Field label="Samsung Reference URL:" hint="A samsung.com/us or samsung.com/uk product or marketing page. We'll pull its content server-side to find claims that need disclaiming.">
-                <input className="cl-input" value={disclaimerUrl} onChange={e => setDisclaimerUrl(e.target.value)}
-                  placeholder="https://www.samsung.com/us/..."
-                  style={inputBase} />
-              </Field>
-
-              <Field label="What Needs Disclaiming:" hint="Optional — point us at a specific claim (battery life, financing terms, trade-in offer) rather than the whole page.">
-                <input className="cl-input" value={disclaimerContext} onChange={e => setDisclaimerContext(e.target.value)}
-                  placeholder="e.g. battery life claim, trade-in offer terms"
-                  style={inputBase} />
-              </Field>
-
-              <Field label="Paste Page Content:" hint="Optional fallback — if the URL fetch fails (blocked, JS-rendered page), paste the relevant page text here instead.">
-                <textarea className="cl-input" value={disclaimerPageText} onChange={e => setDisclaimerPageText(e.target.value)} rows={4}
-                  placeholder="Paste page content here if the URL above doesn't work."
-                  style={{ ...inputBase, resize: "none" }} />
-              </Field>
-
-              <button className="cl-btn" onClick={handleDisclaimers}
-                disabled={loading || (!disclaimerUrl.trim() && !disclaimerPageText.trim()) || (disclaimerSource === "revise" && !disclaimerExisting.trim())}
-                style={{ padding: "15px", background: "#C8401A", color: "#FFF", border: "none", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, letterSpacing: "0.04em", cursor: "pointer", transition: "background 0.15s" }}>
-                {loading ? "Drafting…" : "Draft disclaimers →"}
-              </button>
-            </div>
-          )}
-
           {mode === "alttext" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
               <Field label="Media Type:" hint="Image alt text, or a video description + caption check via a public YouTube link.">
@@ -1192,7 +1080,7 @@ Return ONLY valid JSON, no markdown, no preamble:
                 ))}
               </div>
               <p style={{ color: "#A0998F", fontSize: 13 }}>
-                {(mode === "generate" || mode === "ux" || mode === "social") ? "Crafting 3 strategic variants…" : mode === "analyze" ? "Running full copy audit…" : mode === "aeo" ? "Optimizing for answer engines…" : mode === "benchmark" ? "Researching trends and competitors…" : mode === "disclaimers" ? "Reading the page and drafting…" : mode === "alttext" ? (altMode === "video" ? "Watching the video…" : "Looking at the image…") : "Working…"}
+                {(mode === "generate" || mode === "ux" || mode === "social") ? "Crafting 3 strategic variants…" : mode === "analyze" ? "Running full copy audit…" : mode === "aeo" ? "Optimizing for answer engines…" : mode === "benchmark" ? "Researching trends and competitors…" : mode === "alttext" ? (altMode === "video" ? "Watching the video…" : "Looking at the image…") : "Working…"}
               </p>
             </div>
           )}
@@ -1546,40 +1434,6 @@ Return ONLY valid JSON, no markdown, no preamble:
                   {result.recommendations.map((s, i) => <Pill key={i} type="fix">{s}</Pill>)}
                 </div>
               )}
-            </div>
-          )}
-
-          {/* ── DISCLAIMERS RESULTS ── */}
-          {!loading && result?.type === "disclaimers" && (
-            <div className="cl-fade" style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 16 }}>
-              <div style={{ padding: "12px 14px", background: "#FFF8F0", border: "1px solid #C0782030", borderRadius: 8 }}>
-                <p style={{ fontSize: 12, color: "#7A4E10", lineHeight: 1.55, margin: 0 }}>
-                  ⚠ These are drafts for legal/compliance review, not final legal copy.
-                </p>
-              </div>
-
-              {result.source_notes && (
-                <div style={{ padding: "14px 16px", background: "#F7F5F0", border: "1px solid #DDD9D0", borderRadius: 8 }}>
-                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 6 }}>Source Notes</p>
-                  <p style={{ fontSize: 13, color: "#3A3730", lineHeight: 1.6 }}>{result.source_notes}</p>
-                </div>
-              )}
-
-              {result.disclaimers?.map((d, i) => (
-                <div key={i} style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px", position: "relative" }}>
-                  {d.applies_to && (
-                    <p style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#9A9590", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.04em" }}>Applies to: {d.applies_to}</p>
-                  )}
-                  <p style={{ fontSize: 13, color: "#1C1915", lineHeight: 1.6, marginBottom: d.placement_note ? 10 : 0 }}>{d.disclaimer_text}</p>
-                  {d.placement_note && (
-                    <p style={{ fontSize: 11, color: "#B0ABA4", fontStyle: "italic" }}>Suggested placement: {d.placement_note}</p>
-                  )}
-                  <button className="cl-copy" onClick={() => handleCopy(d.disclaimer_text, `disc-${i}`)}
-                    style={{ position: "absolute", top: 14, right: 14, padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === `disc-${i}` ? "#1E7A48" : "#9A9590" }}>
-                    {copied === `disc-${i}` ? "✓" : "Copy"}
-                  </button>
-                </div>
-              ))}
             </div>
           )}
 
