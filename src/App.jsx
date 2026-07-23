@@ -182,7 +182,7 @@ function ToneVoicePanel({ data }) {
   if (!present.length) return null;
   return (
     <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px" }}>
-      <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590", marginBottom: 16 }}>Tone &amp; Voice</p>
+      <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 16 }}>Tone &amp; Voice</p>
       {present.map((d, idx) => {
         const pct = Math.max(0, Math.min(100, data[d.key].percent ?? 50));
         return (
@@ -213,7 +213,7 @@ function TrendingKeywordsPanel({ keyword, data }) {
   return (
     <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-        <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590" }}>
+        <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590" }}>
           {rising.length ? "Trending Now" : "Related Searches"} <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(Google Trends)</span>
         </p>
         <a href={trendsUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#C8401A", fontFamily: "'DM Mono', monospace", textDecoration: "none" }}>View on Trends ↗</a>
@@ -243,9 +243,9 @@ const inputBase = {
 };
 
 const labelStyle = {
-  display: "block", fontFamily: "'Syne', sans-serif",
-  fontWeight: 700, fontSize: 10, letterSpacing: "0.1em",
-  textTransform: "uppercase", color: "#9A9590", marginBottom: 8,
+  display: "block", fontFamily: "'DM Sans', sans-serif",
+  fontWeight: 700, fontSize: 12.5, letterSpacing: "0.01em",
+  textTransform: "none", color: "#6B665F", marginBottom: 8,
 };
 
 const scoreColor = s => s >= 80 ? "#1E7A48" : s >= 60 ? "#C07820" : "#C0392B";
@@ -359,6 +359,21 @@ export default function CopyLab() {
 
   const [benchBrief, setBenchBrief] = useState("");
   const [benchAudience, setBenchAudience] = useState("");
+
+  const [disclaimerSource, setDisclaimerSource] = useState("create"); // "create" | "revise"
+  const [disclaimerUrl, setDisclaimerUrl] = useState("");
+  const [disclaimerContext, setDisclaimerContext] = useState("");
+  const [disclaimerExisting, setDisclaimerExisting] = useState("");
+  const [disclaimerPageText, setDisclaimerPageText] = useState(""); // manual fallback if fetch fails
+
+  const [altMode, setAltMode] = useState("image"); // "image" | "video"
+  const [altImageFile, setAltImageFile] = useState(null);
+  const [altImagePreview, setAltImagePreview] = useState("");
+  const [altImageBase64, setAltImageBase64] = useState("");
+  const [altImageMimeType, setAltImageMimeType] = useState("");
+  const [altImageDescription, setAltImageDescription] = useState(""); // fallback when image can't be uploaded (confidential)
+  const [altContext, setAltContext] = useState("");
+  const [altYoutubeUrl, setAltYoutubeUrl] = useState("");
 
   const toggleTone = t => setTones(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
   const toggleAnalyzeTone = t => setAnalyzeTones(p => p.includes(t) ? p.filter(x => x !== t) : [...p, t]);
@@ -579,6 +594,127 @@ Return:
     setLoading(false);
   };
 
+  const handleDisclaimers = async () => {
+    if (!disclaimerUrl.trim() && !disclaimerPageText.trim()) return;
+    if (disclaimerSource === "revise" && !disclaimerExisting.trim()) return;
+    setLoading(true); setError(null); setResult(null);
+    try {
+      let pageText = disclaimerPageText.trim();
+      let fetchedUrl = "";
+
+      if (!pageText && disclaimerUrl.trim()) {
+        const fetchRes = await fetch("/api/fetch-samsung-page", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: disclaimerUrl.trim() }),
+        });
+        const fetchData = await fetchRes.json();
+        if (!fetchRes.ok) {
+          setError(fetchData?.error + " You can paste the page content manually in the fallback field below instead.");
+          setLoading(false);
+          return;
+        }
+        pageText = fetchData.text;
+        fetchedUrl = fetchData.url;
+      }
+
+      const sys = `You are a legal-conscious brand copywriter who drafts disclaimer language for Samsung marketing and product pages. You are NOT a lawyer, and you always make that clear: your output is a starting draft for human legal/compliance review, never final legal copy. Follow Samsung's typical disclaimer conventions: concise, footnote-style, asterisk or numbered markers, precise about conditions/exclusions, no absolute claims without qualification. ${SENTENCE_CASE_RULE} Return ONLY valid JSON. No markdown, no preamble.`;
+
+      const task = disclaimerSource === "revise"
+        ? `Revise this existing disclaimer to be clearer and more precise, keeping its legal intent intact:\n"""\n${disclaimerExisting.trim()}\n"""`
+        : `Draft disclaimer(s) needed for this page/context.`;
+
+      const usr = `${task}
+${disclaimerContext.trim() ? `\nWhat needs disclaiming: ${disclaimerContext.trim()}` : ""}
+${fetchedUrl ? `\nReference page: ${fetchedUrl}` : ""}
+
+Source page content (use this to identify claims that likely need disclaiming — battery/performance claims, pricing/financing terms, trade-in offers, availability, AI feature limitations, comparisons, etc.):
+"""
+${pageText.slice(0, 10000)}
+"""
+
+Identify the specific claims on this page that need disclaiming, and draft one disclaimer per claim (or revise the one given). For each, note which claim/section it applies to and a suggested placement (e.g. "footnote under hero", "near CTA", "bottom of page in fine print").
+Return:
+{"disclaimers":[{"disclaimer_text":"","applies_to":"","placement_note":""}],"source_notes":"1-2 sentences on what was found on the page relevant to disclaimers"}`;
+
+      const data = await callClaude(sys, usr, 3200);
+      setResult({ type: "disclaimers", ...data });
+    } catch (e) {
+      setError(describeError(e));
+    }
+    setLoading(false);
+  };
+
+  const handleAltImageFile = (file) => {
+    if (!file) return;
+    setAltImageFile(file);
+    setAltImageMimeType(file.type);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result;
+      setAltImagePreview(dataUrl);
+      setAltImageBase64(dataUrl.split(",")[1] || "");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearAltImage = () => {
+    setAltImageFile(null);
+    setAltImagePreview("");
+    setAltImageBase64("");
+    setAltImageMimeType("");
+  };
+
+  const handleAltText = async () => {
+    const hasImageInput = altMode === "image" && (altImageBase64 || altImageDescription.trim());
+    const hasVideoInput = altMode === "video" && altYoutubeUrl.trim();
+    if (!hasImageInput && !hasVideoInput) return;
+    setLoading(true); setError(null); setResult(null);
+    try {
+      if (altMode === "image") {
+        if (altImageBase64) {
+          const prompt = `Write accessibility alt text for this image.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}
+Return ONLY valid JSON, no markdown, no preamble:
+{"alt_text":"concise WCAG-appropriate alt text, ideally under 125 characters, describing what's functionally important about the image","long_description":"a fuller description for complex images (charts, infographics, multi-element layouts) — empty string if the image is simple enough that alt_text alone covers it","notes":"any accessibility considerations, e.g. text baked into the image that should also appear as real text nearby"}`;
+          const res = await fetch("/api/analyze-media", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode: "image", prompt, imageBase64: altImageBase64, imageMimeType: altImageMimeType, maxTokens: 1200 }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data?.error || "Request failed.");
+          const clean = data.text.replace(/```json\n?|```/g, "").trim();
+          const parsed = JSON.parse(clean);
+          setResult({ type: "alttext-image", ...parsed, sourceMode: "upload" });
+        } else {
+          const sys = `You are an accessibility specialist writing image alt text from a text description (the actual image is confidential and can't be uploaded). ${SENTENCE_CASE_RULE} Return ONLY valid JSON. No markdown, no preamble.`;
+          const usr = `Write accessibility alt text for an image described as: "${altImageDescription.trim()}"${altContext.trim() ? `\nContext: ${altContext.trim()}` : ""}
+Return:
+{"alt_text":"concise WCAG-appropriate alt text under 125 characters","long_description":"a fuller description if the image sounds complex — empty string otherwise","notes":"any accessibility considerations"}`;
+          const data = await callClaude(sys, usr, 1000);
+          setResult({ type: "alttext-image", ...data, sourceMode: "description" });
+        }
+      } else {
+        const prompt = `Watch this video and provide accessibility information about it.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}
+Return ONLY valid JSON, no markdown, no preamble:
+{"video_alt_text":"a concise description of what this video shows/is about, for accessibility (like alt text, but for video)","appears_captioned":true or false — true only if you can actually SEE burned-in/open captions in the video frames themselves; if you can't tell from the visuals, use false,"transcript_captions":"a full transcript of the spoken audio, formatted as readable caption text with natural line breaks — this is a draft caption track to use IF the video turns out to lack real closed captions on YouTube","notes":"1-2 sentences of any other accessibility notes, e.g. important on-screen text or visuals not covered by the audio"}`;
+        const res = await fetch("/api/analyze-media", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: "video", prompt, videoUrl: altYoutubeUrl.trim(), maxTokens: 4000 }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || "Request failed.");
+        const clean = data.text.replace(/```json\n?|```/g, "").trim();
+        const parsed = JSON.parse(clean);
+        setResult({ type: "alttext-video", ...parsed });
+      }
+    } catch (e) {
+      setError(describeError(e));
+    }
+    setLoading(false);
+  };
+
   const activeCopyTypes = mode === "social" ? SOCIAL_COPY_TYPES : GENERAL_COPY_TYPES;
 
   return (
@@ -618,7 +754,7 @@ Return:
           </span>
 
           <div style={{ display: "flex", background: "#E8E4DC", borderRadius: 7, padding: 3, gap: 2, width: "fit-content", maxWidth: "100%", flexWrap: "nowrap", overflowX: "auto" }}>
-            {["generate", "ux", "social", "analyze", "aeo", "benchmark"].map(m => (
+            {["generate", "analyze", "ux", "social", "aeo", "benchmark", "disclaimers", "alttext"].map(m => (
               <button key={m} className={`cl-mode ${mode === m ? "on" : ""}`}
                 onClick={() => {
                   setMode(m); setResult(null); setError(null);
@@ -627,7 +763,7 @@ Return:
                   else if (m === "social") setCopyType(SOCIAL_COPY_TYPES[0].value);
                 }}
                 style={{ padding: "7px 12px", borderRadius: 5, border: "none", cursor: "pointer", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 12, letterSpacing: "0.03em", background: "transparent", color: "#7A7570", transition: "all 0.15s", flexShrink: 0, whiteSpace: "nowrap" }}>
-                {m === "generate" ? "Generate" : m === "ux" ? "UX/UI Copy" : m === "social" ? "Social Copy" : m === "analyze" ? "Analyze" : m === "aeo" ? "AEO" : "Benchmark"}
+                {m === "generate" ? "Generate copy" : m === "analyze" ? "Analyze copy" : m === "ux" ? "UX/UI Copy" : m === "social" ? "Social Copy" : m === "aeo" ? "AEO" : m === "benchmark" ? "Benchmark" : m === "disclaimers" ? "Disclaimers" : "Alt Text"}
               </button>
             ))}
           </div>
@@ -928,6 +1064,121 @@ Return:
             </div>
           )}
 
+          {/* ── DISCLAIMERS FORM ── */}
+          {mode === "disclaimers" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+              <div style={{ padding: "12px 14px", background: "#FFF8F0", border: "1px solid #C0782030", borderRadius: 8 }}>
+                <p style={{ fontSize: 12, color: "#7A4E10", lineHeight: 1.55, margin: 0 }}>
+                  ⚠ Drafts only — not legal advice. Everything here needs human legal/compliance review before publishing.
+                </p>
+              </div>
+
+              <Field label="Source:" hint="Draft new disclaimers for a page, or tighten up one you already have.">
+                <div style={{ display: "flex", background: "#E8E4DC", borderRadius: 7, padding: 3, gap: 2 }}>
+                  {["create", "revise"].map(s => (
+                    <button key={s} className={`cl-mode ${disclaimerSource === s ? "on" : ""}`}
+                      onClick={() => setDisclaimerSource(s)}
+                      style={{ flex: 1, padding: "9px 10px", borderRadius: 5, border: "none", cursor: "pointer", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 12, letterSpacing: "0.03em", background: "transparent", color: "#7A7570", transition: "all 0.15s" }}>
+                      {s === "create" ? "Create new" : "Revise existing"}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+
+              {disclaimerSource === "revise" && (
+                <Field label="Existing Disclaimer:" required hint="Paste the current disclaimer text you want tightened up.">
+                  <textarea className="cl-input" value={disclaimerExisting} onChange={e => setDisclaimerExisting(e.target.value)} rows={3}
+                    placeholder="Paste the current disclaimer text."
+                    style={{ ...inputBase, resize: "none" }} />
+                </Field>
+              )}
+
+              <Field label="Samsung Reference URL:" hint="A samsung.com/us or samsung.com/uk product or marketing page. We'll pull its content server-side to find claims that need disclaiming.">
+                <input className="cl-input" value={disclaimerUrl} onChange={e => setDisclaimerUrl(e.target.value)}
+                  placeholder="https://www.samsung.com/us/..."
+                  style={inputBase} />
+              </Field>
+
+              <Field label="What Needs Disclaiming:" hint="Optional — point us at a specific claim (battery life, financing terms, trade-in offer) rather than the whole page.">
+                <input className="cl-input" value={disclaimerContext} onChange={e => setDisclaimerContext(e.target.value)}
+                  placeholder="e.g. battery life claim, trade-in offer terms"
+                  style={inputBase} />
+              </Field>
+
+              <Field label="Paste Page Content:" hint="Optional fallback — if the URL fetch fails (blocked, JS-rendered page), paste the relevant page text here instead.">
+                <textarea className="cl-input" value={disclaimerPageText} onChange={e => setDisclaimerPageText(e.target.value)} rows={4}
+                  placeholder="Paste page content here if the URL above doesn't work."
+                  style={{ ...inputBase, resize: "none" }} />
+              </Field>
+
+              <button className="cl-btn" onClick={handleDisclaimers}
+                disabled={loading || (!disclaimerUrl.trim() && !disclaimerPageText.trim()) || (disclaimerSource === "revise" && !disclaimerExisting.trim())}
+                style={{ padding: "15px", background: "#C8401A", color: "#FFF", border: "none", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, letterSpacing: "0.04em", cursor: "pointer", transition: "background 0.15s" }}>
+                {loading ? "Drafting…" : "Draft disclaimers →"}
+              </button>
+            </div>
+          )}
+
+          {mode === "alttext" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+              <Field label="Media Type:" hint="Image alt text, or a video description + caption check via a public YouTube link.">
+                <div style={{ display: "flex", background: "#E8E4DC", borderRadius: 7, padding: 3, gap: 2 }}>
+                  {["image", "video"].map(m => (
+                    <button key={m} className={`cl-mode ${altMode === m ? "on" : ""}`}
+                      onClick={() => { setAltMode(m); setResult(null); setError(null); }}
+                      style={{ flex: 1, padding: "9px 10px", borderRadius: 5, border: "none", cursor: "pointer", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 12, letterSpacing: "0.03em", background: "transparent", color: "#7A7570", transition: "all 0.15s" }}>
+                      {m === "image" ? "Image" : "Video (YouTube)"}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+
+              {altMode === "image" ? (
+                <>
+                  <Field label="Upload Image:" hint="Preferred when possible — the model looks directly at the image to write accurate alt text.">
+                    {altImagePreview ? (
+                      <div style={{ position: "relative", display: "inline-block" }}>
+                        <img src={altImagePreview} alt="Upload preview" style={{ maxWidth: "100%", maxHeight: 220, borderRadius: 8, border: "1.5px solid #E0DBD2", display: "block" }} />
+                        <button onClick={clearAltImage} type="button"
+                          style={{ position: "absolute", top: 8, right: 8, padding: "5px 10px", background: "#1C1915", color: "#FFF", border: "none", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10 }}>
+                          Remove
+                        </button>
+                      </div>
+                    ) : (
+                      <input type="file" accept="image/*" onChange={e => handleAltImageFile(e.target.files?.[0])}
+                        style={{ ...inputBase, padding: "11px 14px", cursor: "pointer" }} />
+                    )}
+                  </Field>
+
+                  <Field label="Or Describe the Image:" hint="Use this instead if the image is confidential/restricted and can't be uploaded — describe it in enough detail to write from.">
+                    <textarea className="cl-input" value={altImageDescription} onChange={e => setAltImageDescription(e.target.value)} rows={3}
+                      disabled={!!altImagePreview}
+                      placeholder="e.g. Product shot of a phone on a marble surface, screen showing the home grid, soft studio lighting from the left."
+                      style={{ ...inputBase, resize: "none", opacity: altImagePreview ? 0.5 : 1 }} />
+                  </Field>
+                </>
+              ) : (
+                <Field label="YouTube URL:" required hint="Must be a public video (not private/unlisted). Gemini watches it directly via this link — no download needed.">
+                  <input className="cl-input" value={altYoutubeUrl} onChange={e => setAltYoutubeUrl(e.target.value)}
+                    placeholder="https://www.youtube.com/watch?v=..."
+                    style={inputBase} />
+                </Field>
+              )}
+
+              <Field label="Context:" hint="Optional — product, page, or purpose, so the description fits where it'll be used.">
+                <input className="cl-input" value={altContext} onChange={e => setAltContext(e.target.value)}
+                  placeholder="e.g. hero image on Galaxy S26 product page"
+                  style={inputBase} />
+              </Field>
+
+              <button className="cl-btn" onClick={handleAltText}
+                disabled={loading || (altMode === "image" ? (!altImageBase64 && !altImageDescription.trim()) : !altYoutubeUrl.trim())}
+                style={{ padding: "15px", background: "#C8401A", color: "#FFF", border: "none", borderRadius: 8, fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 14, letterSpacing: "0.04em", cursor: "pointer", transition: "background 0.15s" }}>
+                {loading ? "Analyzing…" : "Generate alt text →"}
+              </button>
+            </div>
+          )}
+
           </div>
 
           <div className="cl-results-col" style={{ width: "100%", marginTop: 8 }}>
@@ -941,7 +1192,7 @@ Return:
                 ))}
               </div>
               <p style={{ color: "#A0998F", fontSize: 13 }}>
-                {(mode === "generate" || mode === "ux" || mode === "social") ? "Crafting 3 strategic variants…" : mode === "analyze" ? "Running full copy audit…" : mode === "aeo" ? "Optimizing for answer engines…" : "Researching trends and competitors…"}
+                {(mode === "generate" || mode === "ux" || mode === "social") ? "Crafting 3 strategic variants…" : mode === "analyze" ? "Running full copy audit…" : mode === "aeo" ? "Optimizing for answer engines…" : mode === "benchmark" ? "Researching trends and competitors…" : mode === "disclaimers" ? "Reading the page and drafting…" : mode === "alttext" ? (altMode === "video" ? "Watching the video…" : "Looking at the image…") : "Working…"}
               </p>
             </div>
           )}
@@ -966,7 +1217,7 @@ Return:
 
                 {result.narrative && (
                   <div style={{ padding: "14px 16px", background: "#FFF8F0", border: "1px solid #C0782020", borderRadius: 8, marginBottom: 16 }}>
-                    <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#C07820", marginBottom: 6 }}>Narrative</p>
+                    <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#C07820", marginBottom: 6 }}>Narrative</p>
                     <p style={{ fontSize: 13, color: "#7A4E10", lineHeight: 1.6 }}>{result.narrative}</p>
                   </div>
                 )}
@@ -981,7 +1232,7 @@ Return:
               <div style={{ display: "flex", gap: 5, marginBottom: 16 }}>
                 {result.variants?.map((v, i) => (
                   <button key={i} className={`cl-vtab ${selectedV === i ? "sel" : ""}`} onClick={() => setSelectedV(i)}
-                    style={{ flex: 1, padding: "9px 6px", background: "#E8E4DC", color: "#7A7570", border: "none", borderRadius: 6, cursor: "pointer", fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 10, letterSpacing: "0.04em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    style={{ flex: 1, padding: "9px 6px", background: "#E8E4DC", color: "#7A7570", border: "none", borderRadius: 6, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.04em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {v.angle || `V${i + 1}`}
                   </button>
                 ))}
@@ -1006,19 +1257,19 @@ Return:
                       <div style={{ display: "flex", gap: 8 }}>
                         {typeof v.tone_match === "number" && (
                           <div style={{ flex: 1, padding: "10px 12px", background: "#FFF", border: "1px solid #DDD9D0", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                            <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9A9590" }}>Tone Match</span>
+                            <span style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9A9590" }}>Tone Match</span>
                             <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 500, color: scoreColor(v.tone_match) }}>{v.tone_match}%</span>
                           </div>
                         )}
                         {typeof v.keyword_use === "number" && (
                           <div style={{ flex: 1, padding: "10px 12px", background: "#FFF", border: "1px solid #DDD9D0", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                            <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9A9590" }}>Keyword Use</span>
+                            <span style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9A9590" }}>Keyword Use</span>
                             <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 500, color: scoreColor(v.keyword_use) }}>{v.keyword_use}%</span>
                           </div>
                         )}
                         {typeof v.character_count === "number" && (
                           <div style={{ flex: 1, padding: "10px 12px", background: "#FFF", border: `1px solid ${mode === "ux" && uxCharacterConstraint.trim() && v.character_count > parseInt(uxCharacterConstraint) ? "#C8401A50" : "#DDD9D0"}`, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                            <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9A9590" }}>Characters</span>
+                            <span style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#9A9590" }}>Characters</span>
                             <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 12, fontWeight: 500, color: mode === "ux" && uxCharacterConstraint.trim() && v.character_count > parseInt(uxCharacterConstraint) ? "#C8401A" : "#1C1915" }}>
                               {v.character_count}{mode === "ux" && uxCharacterConstraint.trim() ? ` / ${uxCharacterConstraint.trim()}` : ""}
                             </span>
@@ -1029,30 +1280,30 @@ Return:
 
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                       <div style={{ padding: "12px 13px", background: "#F0FBF5", border: "1px solid #1E7A4820", borderRadius: 8 }}>
-                        <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#1E7A48", marginBottom: 5 }}>What lands</p>
+                        <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#1E7A48", marginBottom: 5 }}>What lands</p>
                         <p style={{ fontSize: 12, color: "#1A5C38", lineHeight: 1.55 }}>{v.strength}</p>
                       </div>
                       <div style={{ padding: "12px 13px", background: "#FFF8F0", border: "1px solid #C0782020", borderRadius: 8 }}>
-                        <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#C07820", marginBottom: 5 }}>Watch out</p>
+                        <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#C07820", marginBottom: 5 }}>Watch out</p>
                         <p style={{ fontSize: 12, color: "#7A4E10", lineHeight: 1.55 }}>{v.watch_out}</p>
                       </div>
                     </div>
 
                     <div style={{ padding: "13px 14px", background: "#F7F5F0", border: "1px solid #DDD9D0", borderRadius: 8 }}>
-                      <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590", marginBottom: 6 }}>Strategy</p>
+                      <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 6 }}>Strategy</p>
                       <p style={{ fontSize: 13, color: "#3A3730", lineHeight: 1.6 }}>{v.rationale}</p>
                     </div>
 
                     {v.keyword_fit && (
                       <div style={{ padding: "12px 13px", background: "#F5F8FF", border: "1px solid #3A5FC820", borderRadius: 8 }}>
-                        <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#3A5FC8", marginBottom: 5 }}>🔑 Keyword fit</p>
+                        <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#3A5FC8", marginBottom: 5 }}>🔑 Keyword fit</p>
                         <p style={{ fontSize: 12, color: "#2A3D80", lineHeight: 1.55 }}>{v.keyword_fit}</p>
                       </div>
                     )}
 
                     {v.keywords_used?.length > 0 && (
                       <div>
-                        <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Keywords Used</p>
+                        <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Keywords Used</p>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                           {v.keywords_used.map((k, i) => (
                             <span key={i} style={{ padding: "5px 11px", background: "#F0FBF5", border: "1px solid #1E7A4820", borderRadius: 20, fontSize: 12, color: "#1A5C38", fontFamily: "'DM Sans', sans-serif" }}>{k}</span>
@@ -1063,7 +1314,7 @@ Return:
 
                     {v.features_used?.length > 0 && (
                       <div>
-                        <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Features Highlighted</p>
+                        <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Features Highlighted</p>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                           {v.features_used.map((f, i) => (
                             <span key={i} style={{ padding: "5px 11px", background: "#F5F8FF", border: "1px solid #3A5FC820", borderRadius: 20, fontSize: 12, color: "#2A3D80", fontFamily: "'DM Sans', sans-serif" }}>{f}</span>
@@ -1090,7 +1341,7 @@ Return:
             <div className="cl-fade" style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 12 }}>
               <div style={{ padding: "18px 16px", background: "#1C1915", borderRadius: 10 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", color: "#C8401A" }}>Verdict</p>
+                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#C8401A" }}>Verdict</p>
                   <div style={{ flex: 1, height: 1, background: "#333" }} />
                   <span style={{ fontFamily: "'DM Mono', monospace", fontSize: 11, fontWeight: 500, color: scoreColor(result.overall_score), background: scoreColor(result.overall_score) + "25", border: `1px solid ${scoreColor(result.overall_score)}30`, borderRadius: 4, padding: "2px 8px" }}>
                     {scoreLabel(result.overall_score)}
@@ -1104,7 +1355,7 @@ Return:
               </div>
 
               <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px" }}>
-                <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590", marginBottom: 14 }}>Scorecard</p>
+                <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 14 }}>Scorecard</p>
                 {result.scores && Object.entries(result.scores).map(([k, v]) => (
                   <ScoreBar key={k} label={k.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())} score={v.score} note={v.note} />
                 ))}
@@ -1116,21 +1367,21 @@ Return:
 
               {result.flags?.length > 0 && (
                 <div>
-                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#C8401A", marginBottom: 8 }}>⚑ Flags</p>
+                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#C8401A", marginBottom: 8 }}>⚑ Flags</p>
                   {result.flags.map((f, i) => <Pill key={i} type="flag">{f}</Pill>)}
                 </div>
               )}
 
               {result.improvements?.length > 0 && (
                 <div>
-                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#1E7A48", marginBottom: 8 }}>↑ Improvements</p>
+                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#1E7A48", marginBottom: 8 }}>↑ Improvements</p>
                   {result.improvements.map((imp, i) => <Pill key={i} type="fix">{imp}</Pill>)}
                 </div>
               )}
 
               {result.rewrite && (
                 <div style={{ padding: "16px", background: "#FFF", border: "1.5px solid #C8401A25", borderRadius: 8, position: "relative" }}>
-                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590", marginBottom: 10 }}>✦ Suggested rewrite</p>
+                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 10 }}>✦ Suggested rewrite</p>
                   <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 20, color: "#1C1915", lineHeight: 1.25, letterSpacing: "-0.3px", paddingRight: 52 }}>
                     "{highlightText(result.rewrite, targetKeyword.split(","), [])}"
                   </p>
@@ -1150,7 +1401,7 @@ Return:
 
               {result.aeo_notes && (
                 <div style={{ padding: "16px", background: "#1C1915", borderRadius: 10 }}>
-                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", color: "#C8401A", marginBottom: 8 }}>AEO Notes</p>
+                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#C8401A", marginBottom: 8 }}>AEO Notes</p>
                   <p style={{ fontSize: 13, color: "#E8E4DC", lineHeight: 1.6 }}>{result.aeo_notes}</p>
                 </div>
               )}
@@ -1184,7 +1435,7 @@ Return:
 
               {result.keywords_used?.length > 0 && (
                 <div>
-                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Keywords Used</p>
+                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Keywords Used</p>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                     {result.keywords_used.map((k, i) => (
                       <span key={i} style={{ padding: "5px 11px", background: "#F0FBF5", border: "1px solid #1E7A4820", borderRadius: 20, fontSize: 12, color: "#1A5C38", fontFamily: "'DM Sans', sans-serif" }}>{k}</span>
@@ -1195,7 +1446,7 @@ Return:
 
               {result.features_highlighted?.length > 0 && (
                 <div>
-                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Features Highlighted</p>
+                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Features Highlighted</p>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                     {result.features_highlighted.map((f, i) => (
                       <span key={i} style={{ padding: "5px 11px", background: "#F5F8FF", border: "1px solid #3A5FC820", borderRadius: 20, fontSize: 12, color: "#2A3D80", fontFamily: "'DM Sans', sans-serif" }}>{f}</span>
@@ -1215,7 +1466,7 @@ Return:
 
               {result.positioning_recommendation && (
                 <div style={{ padding: "18px 16px", background: "#1C1915", borderRadius: 10 }}>
-                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.14em", textTransform: "uppercase", color: "#C8401A", marginBottom: 10 }}>Positioning Recommendation</p>
+                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#C8401A", marginBottom: 10 }}>Positioning Recommendation</p>
                   <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 600, fontSize: 15, color: "#F5F2EC", lineHeight: 1.5 }}>{result.positioning_recommendation}</p>
                 </div>
               )}
@@ -1252,13 +1503,13 @@ Return:
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                           {c.strengths && (
                             <div style={{ padding: "10px 12px", background: "#F0FBF5", border: "1px solid #1E7A4820", borderRadius: 8 }}>
-                              <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#1E7A48", marginBottom: 4 }}>Strength</p>
+                              <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#1E7A48", marginBottom: 4 }}>Strength</p>
                               <p style={{ fontSize: 12, color: "#1A5C38", lineHeight: 1.5 }}>{c.strengths}</p>
                             </div>
                           )}
                           {c.weaknesses && (
                             <div style={{ padding: "10px 12px", background: "#FFF8F0", border: "1px solid #C0782020", borderRadius: 8 }}>
-                              <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#C07820", marginBottom: 4 }}>Gap</p>
+                              <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.1em", textTransform: "uppercase", color: "#C07820", marginBottom: 4 }}>Gap</p>
                               <p style={{ fontSize: 12, color: "#7A4E10", lineHeight: 1.5 }}>{c.weaknesses}</p>
                             </div>
                           )}
@@ -1271,7 +1522,7 @@ Return:
 
               {result.archetype_suggestions?.length > 0 && (
                 <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px" }}>
-                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#9A9590", marginBottom: 14 }}>Brand Archetype Fit</p>
+                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 14 }}>Brand Archetype Fit</p>
                   {result.archetype_suggestions.map((a, i) => (
                     <div key={i} style={{ marginBottom: i === result.archetype_suggestions.length - 1 ? 0 : 16 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
@@ -1291,9 +1542,111 @@ Return:
 
               {result.recommendations?.length > 0 && (
                 <div>
-                  <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#1E7A48", marginBottom: 8 }}>↑ Recommendations</p>
+                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#1E7A48", marginBottom: 8 }}>↑ Recommendations</p>
                   {result.recommendations.map((s, i) => <Pill key={i} type="fix">{s}</Pill>)}
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* ── DISCLAIMERS RESULTS ── */}
+          {!loading && result?.type === "disclaimers" && (
+            <div className="cl-fade" style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ padding: "12px 14px", background: "#FFF8F0", border: "1px solid #C0782030", borderRadius: 8 }}>
+                <p style={{ fontSize: 12, color: "#7A4E10", lineHeight: 1.55, margin: 0 }}>
+                  ⚠ These are drafts for legal/compliance review, not final legal copy.
+                </p>
+              </div>
+
+              {result.source_notes && (
+                <div style={{ padding: "14px 16px", background: "#F7F5F0", border: "1px solid #DDD9D0", borderRadius: 8 }}>
+                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 6 }}>Source Notes</p>
+                  <p style={{ fontSize: 13, color: "#3A3730", lineHeight: 1.6 }}>{result.source_notes}</p>
+                </div>
+              )}
+
+              {result.disclaimers?.map((d, i) => (
+                <div key={i} style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px", position: "relative" }}>
+                  {d.applies_to && (
+                    <p style={{ fontFamily: "'DM Mono', monospace", fontSize: 10, color: "#9A9590", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.04em" }}>Applies to: {d.applies_to}</p>
+                  )}
+                  <p style={{ fontSize: 13, color: "#1C1915", lineHeight: 1.6, marginBottom: d.placement_note ? 10 : 0 }}>{d.disclaimer_text}</p>
+                  {d.placement_note && (
+                    <p style={{ fontSize: 11, color: "#B0ABA4", fontStyle: "italic" }}>Suggested placement: {d.placement_note}</p>
+                  )}
+                  <button className="cl-copy" onClick={() => handleCopy(d.disclaimer_text, `disc-${i}`)}
+                    style={{ position: "absolute", top: 14, right: 14, padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === `disc-${i}` ? "#1E7A48" : "#9A9590" }}>
+                    {copied === `disc-${i}` ? "✓" : "Copy"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!loading && result?.type === "alttext-image" && (
+            <div className="cl-fade" style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 16 }}>
+              {altImagePreview && result.sourceMode === "upload" && (
+                <img src={altImagePreview} alt="Analyzed" style={{ maxWidth: "100%", maxHeight: 260, borderRadius: 10, border: "1.5px solid #E0DBD2" }} />
+              )}
+
+              <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px", position: "relative" }}>
+                <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Alt Text</p>
+                <p style={{ fontSize: 15, color: "#1C1915", lineHeight: 1.55, fontWeight: 600, paddingRight: 52 }}>{result.alt_text}</p>
+                <button className="cl-copy" onClick={() => handleCopy(result.alt_text, "alt-main")}
+                  style={{ position: "absolute", top: 14, right: 14, padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === "alt-main" ? "#1E7A48" : "#9A9590" }}>
+                  {copied === "alt-main" ? "✓" : "Copy"}
+                </button>
+              </div>
+
+              {result.long_description && (
+                <div style={{ background: "#F7F5F0", border: "1px solid #DDD9D0", borderRadius: 8, padding: "14px 16px", position: "relative" }}>
+                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Long Description</p>
+                  <p style={{ fontSize: 13, color: "#3A3730", lineHeight: 1.6, paddingRight: 52 }}>{result.long_description}</p>
+                  <button className="cl-copy" onClick={() => handleCopy(result.long_description, "alt-long")}
+                    style={{ position: "absolute", top: 14, right: 14, padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === "alt-long" ? "#1E7A48" : "#9A9590" }}>
+                    {copied === "alt-long" ? "✓" : "Copy"}
+                  </button>
+                </div>
+              )}
+
+              {result.notes && (
+                <Pill type="fix">{result.notes}</Pill>
+              )}
+            </div>
+          )}
+
+          {!loading && result?.type === "alttext-video" && (
+            <div className="cl-fade" style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px", position: "relative" }}>
+                <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Video Alt Text</p>
+                <p style={{ fontSize: 15, color: "#1C1915", lineHeight: 1.55, fontWeight: 600, paddingRight: 52 }}>{result.video_alt_text}</p>
+                <button className="cl-copy" onClick={() => handleCopy(result.video_alt_text, "vid-alt")}
+                  style={{ position: "absolute", top: 14, right: 14, padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === "vid-alt" ? "#1E7A48" : "#9A9590" }}>
+                  {copied === "vid-alt" ? "✓" : "Copy"}
+                </button>
+              </div>
+
+              <div style={{ padding: "12px 14px", background: result.appears_captioned ? "#F0FBF5" : "#FFF8F0", border: `1px solid ${result.appears_captioned ? "#1E7A4830" : "#C0782030"}`, borderRadius: 8 }}>
+                <p style={{ fontSize: 12, color: result.appears_captioned ? "#1A5C38" : "#7A4E10", lineHeight: 1.55, margin: 0 }}>
+                  {result.appears_captioned
+                    ? "Burned-in captions appear to be visible in the video frames."
+                    : "No burned-in captions were visible in the video frames — this doesn't confirm whether a separate YouTube caption track exists, only that none are visibly on-screen. Check YouTube's CC settings to be sure, or use the transcript below as a caption draft either way."}
+                </p>
+              </div>
+
+              {result.transcript_captions && (
+                <div style={{ background: "#F7F5F0", border: "1px solid #DDD9D0", borderRadius: 8, padding: "14px 16px", position: "relative" }}>
+                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Draft Transcript / Captions</p>
+                  <p style={{ fontSize: 13, color: "#3A3730", lineHeight: 1.7, whiteSpace: "pre-wrap", paddingRight: 52 }}>{result.transcript_captions}</p>
+                  <button className="cl-copy" onClick={() => handleCopy(result.transcript_captions, "vid-transcript")}
+                    style={{ position: "absolute", top: 14, right: 14, padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === "vid-transcript" ? "#1E7A48" : "#9A9590" }}>
+                    {copied === "vid-transcript" ? "✓" : "Copy"}
+                  </button>
+                </div>
+              )}
+
+              {result.notes && (
+                <Pill type="fix">{result.notes}</Pill>
               )}
             </div>
           )}
