@@ -45,6 +45,23 @@ const JOURNEY_STAGES = [
 const EMOTIONAL_STATES = ["Neutral", "Frustrated", "Anxious", "Confused", "Delighted"];
 
 const SENTENCE_CASE_RULE = "Grammar rule: use sentence case for all copy — capitalize only the first word and proper nouns, never Title Case.";
+
+const SAMSUNG_FEATURE_COPY_RULES = `Samsung feature copy style and structure rules:
+
+Style rules:
+- American English spelling and conventions.
+- No Oxford comma.
+- Use Title Case for official feature names (e.g. "Nightography", "Galaxy AI") even though body copy otherwise uses sentence case — this is the one exception to the sentence case rule.
+- (Other Samsung copywriting conventions beyond these are out of scope here — assume standard Samsung brand voice otherwise.)
+
+Feature copy structure:
+1. Eyebrow (if applicable): the feature category, e.g. "Camera", "Display", "Performance". Skip for component-based pages where it doesn't fit.
+2. Headline: combine the feature name/specs with its benefit. If the headline states only the benefit, work the feature name/specs into the body instead.
+3. Body copy — two guides layered together:
+   a. AEO structure (primary): Value Statement (the main feature + benefit) → Spec Description (feature details) → Scenario Narrative (character, use case, context/criteria).
+   b. "3단 논법" layering (apply where it fits naturally, not as a rigid template): Painpoint → Solution → Benefit. This should generally sit inside the AEO structure above rather than override it — some copy opens with the painpoint before the value statement, some folds the painpoint into the value statement itself, and some skips the painpoint entirely and opens straight with the benefit when a painpoint framing doesn't fit naturally. Never force it.
+   - Painpoint framing must stay indirect and subtle — never state the problem negatively or bluntly. Reference examples of the technique (painpoint woven in subtly, bolded here for illustration only): "makes cycling smarter, **not harder**. When you're pushing the pace, **your data needs to keep up**." / "Unlike road running, **trail running is unpredictable by nature** — the path turns without warning, the climbs are harder to pace and the further off the grid you go, the more guidance you need." The painpoint is implied through contrast and stakes, never stated as a complaint.`;
+
 const TONE_VOICE_INSTRUCTION = `Also assess "tone_voice_breakdown" across four industry-standard tone dimensions (Nielsen Norman Group's four dimensions of tone of voice). For each, give a "percent" (0-100) placing the copy on that scale, and a one-sentence "note" explaining why:
 - formality: 0 = Formal, 100 = Casual
 - humor: 0 = Serious, 100 = Funny
@@ -384,7 +401,7 @@ export default function CopyLab() {
     if (!generateProductName.trim() || !generatePagePurpose.trim()) return;
     setLoading(true); setError(null); setResult(null);
     try {
-      const sys = `You are a senior UX copywriter and brand strategist with strong SEO instincts. ${SENTENCE_CASE_RULE} Return ONLY valid JSON. No markdown, no preamble.`;
+      const sys = `You are a senior UX copywriter and brand strategist with strong SEO instincts. ${SENTENCE_CASE_RULE} Return ONLY valid JSON. No markdown, no preamble.${mode === "generate" ? `\n\n${SAMSUNG_FEATURE_COPY_RULES}` : ""}`;
       const brief = `Product Name: ${generateProductName.trim()}\nPage Purpose: ${generatePagePurpose.trim()}${generateReferenceUrl.trim() ? `\nReference URL: ${generateReferenceUrl.trim()} (context only, not fetched live)` : ""}`;
       const keywordBlock = generateKeyword.trim()
         ? `\nTarget keyword: "${generateKeyword.trim()}" — work it in naturally in at least one variant where it fits the format and doesn't feel forced. Don't stuff it if it hurts readability.`
@@ -393,7 +410,7 @@ export default function CopyLab() {
         ? `\nFeatures/details to highlight where relevant: ${generateFeatures.trim()}`
         : "";
       const usr = `Write 3 distinct variants of ${copyType.replace(/_/g, " ")} copy for:\n${brief}
-Tone: ${tones.length ? tones.join(", ") : "balanced and on-brand"}${generateAudience.trim() ? `\nTarget audience: ${generateAudience.trim()} — write with this audience's needs, vocabulary, and expectations in mind.` : ""}${keywordBlock}${featuresBlock}
+Tone: ${tones.length ? tones.join(", ") : "balanced and on-brand"}${generateAudience.trim() ? `\nTarget audience: ${generateAudience.trim()} — write with this audience's needs, vocabulary, and expectations in mind.` : ""}${keywordBlock}${featuresBlock}${mode === "generate" && copyType === "headline" ? "\nApply the headline rule from the feature copy structure above: combine the feature name/specs with the benefit." : ""}${mode === "generate" && copyType === "body" ? "\nApply the body copy structure from the feature copy rules above: Value Statement → Spec Description → Scenario Narrative, layering in Painpoint → Solution → Benefit where it fits naturally." : ""}
 
 As you write the 3 variants, naturally work in the target keyword and features where relevant, without hurting readability or feeling stuffed.
 For each variant, also score (0-100): "tone_match" (how strongly the variant reflects the requested tone${tones.length ? ` — ${tones.join(", ")}` : ""})${generateKeyword.trim() ? ', "keyword_use" (how naturally and effectively the target keyword is used, 0 if not used at all)' : ""}, and report "keywords_used" (exact substrings from the target keyword that literally appear in this variant's copy — omit if not used) and "features_used" (exact substrings from the features list that literally appear in this variant's copy — omit any that don't).
