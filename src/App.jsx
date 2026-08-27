@@ -134,7 +134,7 @@ function TrendingKeywordsPanel({ keyword, data }) {
     <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590" }}>
-          {rising.length ? "Trending Now" : "Related Searches"} <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(Google Trends)</span>
+          {rising.length ? "Trending Now" : "Related Searches"} <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(Google Trends, based on "{keyword}")</span>
         </p>
         <a href={trendsUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#C8401A", fontFamily: "'DM Mono', monospace", textDecoration: "none" }}>View on Trends ↗</a>
       </div>
@@ -195,6 +195,16 @@ function highlightText(text, keywordTerms = [], benefitTerms = []) {
   });
 }
 
+// Shared block appended to every alt-text prompt so the model returns SEO keywords
+// and highlighted benefits as part of the same response, instead of requiring
+// the user to supply them up front.
+const SEO_BENEFITS_INSTRUCTION = `
+Also, without being asked for specific terms, use your own judgment to identify:
+- "seo_keywords": 3-6 realistic SEO keywords/phrases this content is well-suited to rank for or that a shopper would plausibly search for related to it — grounded in what's actually shown/described, not invented. For each, score its relevance/searchability 0-100 as {"keyword":"","score":0,"note":"1 short phrase on why"}.
+- "benefits_highlighted": any functional benefits or purposes this media conveys (per WCAG guidance to describe function over pure appearance) — short phrases, only ones that are genuinely true to the content, empty array if none apply.`;
+
+const SEO_BENEFITS_SCHEMA = `"seo_keywords":[{"keyword":"","score":0,"note":""}],"benefits_highlighted":[]`;
+
 export default function CopyLab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -209,8 +219,6 @@ export default function CopyLab() {
   const [altImageDescription, setAltImageDescription] = useState(""); // fallback when image can't be uploaded (confidential)
   const [altContext, setAltContext] = useState("");
   const [altYoutubeUrl, setAltYoutubeUrl] = useState("");
-  const [altKeywords, setAltKeywords] = useState("");
-  const [altBenefits, setAltBenefits] = useState("");
 
   const handleCopy = (text, id) => {
     navigator.clipboard.writeText(text);
@@ -244,60 +252,59 @@ export default function CopyLab() {
     if (!hasImageInput && !hasVideoInput) return;
     setLoading(true); setError(null); setResult(null);
 
-    const keywordBlock = altKeywords.trim()
-      ? `\nTarget keywords to work in naturally where relevant (never stuffed, never forced): ${altKeywords.trim()}. Report exact substrings from this list that literally appear in your text as "keywords_used" (array), and for each, score its prominence/effectiveness 0-100 as "keyword_scores" (array of {"keyword":"","score":0,"note":"1 short phrase"}).`
-      : "";
-    const benefitsBlock = altBenefits.trim()
-      ? `\nBenefits/features to highlight where true to the media (per WCAG guidance, describe function/purpose, not just appearance): ${altBenefits.trim()}. Report exact substrings that literally appear in your text as "benefits_highlighted" (array).`
-      : "";
-    const trendsKeyword = altKeywords.trim().split(",")[0]?.trim() || altContext.trim();
-
     try {
+      let parsed, sourceMode;
+
       if (altMode === "image") {
         if (altImageBase64) {
-          const prompt = `Write accessibility alt text for this image.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}${keywordBlock}${benefitsBlock}
+          const prompt = `Write accessibility alt text for this image.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}
+${SEO_BENEFITS_INSTRUCTION}
 Return ONLY valid JSON, no markdown, no preamble:
-{"alt_text":"concise WCAG-appropriate alt text, ideally under 125 characters, describing what's functionally important about the image","long_description":"a fuller description for complex images (charts, infographics, multi-element layouts) — empty string if the image is simple enough that alt_text alone covers it","notes":"any accessibility considerations, e.g. text baked into the image that should also appear as real text nearby","keywords_used":[],"keyword_scores":[{"keyword":"","score":0,"note":""}],"benefits_highlighted":[]}`;
-          const [res, trends] = await Promise.all([
-            fetch("/api/analyze-media", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ mode: "image", prompt, imageBase64: altImageBase64, imageMimeType: altImageMimeType, maxTokens: 1200 }),
-            }),
-            fetchTrendingKeywords(trendsKeyword),
-          ]);
+{"alt_text":"concise WCAG-appropriate alt text, ideally under 125 characters, describing what's functionally important about the image","long_description":"a fuller description for complex images (charts, infographics, multi-element layouts) — empty string if the image is simple enough that alt_text alone covers it","notes":"any accessibility considerations, e.g. text baked into the image that should also appear as real text nearby",${SEO_BENEFITS_SCHEMA}}`;
+          const res = await fetch("/api/analyze-media", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode: "image", prompt, imageBase64: altImageBase64, imageMimeType: altImageMimeType, maxTokens: 1200 }),
+          });
           const data = await res.json();
           if (!res.ok) throw new Error(data?.error || "Request failed.");
           const clean = data.text.replace(/```json\n?|```/g, "").trim();
-          const parsed = JSON.parse(clean);
-          setResult({ type: "alttext-image", ...parsed, sourceMode: "upload", trendsKeyword, trendsData: trends });
+          parsed = JSON.parse(clean);
+          sourceMode = "upload";
         } else {
           const sys = `You are an accessibility specialist writing image alt text from a text description (the actual image is confidential and can't be uploaded). ${SENTENCE_CASE_RULE} Return ONLY valid JSON. No markdown, no preamble.`;
-          const usr = `Write accessibility alt text for an image described as: "${altImageDescription.trim()}"${altContext.trim() ? `\nContext: ${altContext.trim()}` : ""}${keywordBlock}${benefitsBlock}
+          const usr = `Write accessibility alt text for an image described as: "${altImageDescription.trim()}"${altContext.trim() ? `\nContext: ${altContext.trim()}` : ""}
+${SEO_BENEFITS_INSTRUCTION}
 Return:
-{"alt_text":"concise WCAG-appropriate alt text under 125 characters","long_description":"a fuller description if the image sounds complex — empty string otherwise","notes":"any accessibility considerations","keywords_used":[],"keyword_scores":[{"keyword":"","score":0,"note":""}],"benefits_highlighted":[]}`;
-          const [data, trends] = await Promise.all([
-            callClaude(sys, usr, 1200),
-            fetchTrendingKeywords(trendsKeyword),
-          ]);
-          setResult({ type: "alttext-image", ...data, sourceMode: "description", trendsKeyword, trendsData: trends });
+{"alt_text":"concise WCAG-appropriate alt text under 125 characters","long_description":"a fuller description if the image sounds complex — empty string otherwise","notes":"any accessibility considerations",${SEO_BENEFITS_SCHEMA}}`;
+          parsed = await callClaude(sys, usr, 1200);
+          sourceMode = "description";
         }
       } else {
-        const prompt = `Watch this video and provide accessibility information about it.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}${keywordBlock}${benefitsBlock}
+        const prompt = `Watch this video and provide accessibility information about it.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}
+${SEO_BENEFITS_INSTRUCTION}
 Return ONLY valid JSON, no markdown, no preamble:
-{"video_alt_text":"a concise description of what this video shows/is about, for accessibility (like alt text, but for video)","appears_captioned":true or false — true only if you can actually SEE burned-in/open captions in the video frames themselves; if you can't tell from the visuals, use false,"transcript_captions":"a full transcript of the spoken audio, formatted as readable caption text with natural line breaks — this is a draft caption track to use IF the video turns out to lack real closed captions on YouTube","notes":"1-2 sentences of any other accessibility notes, e.g. important on-screen text or visuals not covered by the audio","keywords_used":[],"keyword_scores":[{"keyword":"","score":0,"note":""}],"benefits_highlighted":[]}`;
-        const [res, trends] = await Promise.all([
-          fetch("/api/analyze-media", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ mode: "video", prompt, videoUrl: altYoutubeUrl.trim(), maxTokens: 4000 }),
-          }),
-          fetchTrendingKeywords(trendsKeyword),
-        ]);
+{"video_alt_text":"a concise description of what this video shows/is about, for accessibility (like alt text, but for video)","appears_captioned":true or false — true only if you can actually SEE burned-in/open captions in the video frames themselves; if you can't tell from the visuals, use false,"transcript_captions":"a full transcript of the spoken audio, formatted as readable caption text with natural line breaks — this is a draft caption track to use IF the video turns out to lack real closed captions on YouTube","notes":"1-2 sentences of any other accessibility notes, e.g. important on-screen text or visuals not covered by the audio",${SEO_BENEFITS_SCHEMA}}`;
+        const res = await fetch("/api/analyze-media", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode: "video", prompt, videoUrl: altYoutubeUrl.trim(), maxTokens: 4000 }),
+        });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || "Request failed.");
         const clean = data.text.replace(/```json\n?|```/g, "").trim();
-        const parsed = JSON.parse(clean);
+        parsed = JSON.parse(clean);
+      }
+
+      // Now that we know which keyword the model itself surfaced as most relevant,
+      // use it to pull related Google Trends data.
+      const topKeyword = [...(parsed.seo_keywords || [])].sort((a, b) => (b.score || 0) - (a.score || 0))[0]?.keyword;
+      const trendsKeyword = topKeyword || altContext.trim();
+      const trends = await fetchTrendingKeywords(trendsKeyword);
+
+      if (altMode === "image") {
+        setResult({ type: "alttext-image", ...parsed, sourceMode, trendsKeyword, trendsData: trends });
+      } else {
         setResult({ type: "alttext-video", ...parsed, trendsKeyword, trendsData: trends });
       }
     } catch (e) {
@@ -392,21 +399,9 @@ Return ONLY valid JSON, no markdown, no preamble:
                 </Field>
               )}
 
-              <Field label="Context:" hint="Optional — product, page, or purpose, so the description fits where it'll be used.">
+              <Field label="Context:" hint="Optional — product, page, or purpose, so the description (and the AI's own SEO keyword suggestions) fits where it'll be used.">
                 <input className="cl-input" value={altContext} onChange={e => setAltContext(e.target.value)}
                   placeholder="e.g. hero image on Galaxy S26 product page"
-                  style={inputBase} />
-              </Field>
-
-              <Field label="Target Keywords:" hint="Optional — comma-separated SEO keywords to work in naturally, if it doesn't compromise clarity or accuracy. Also pulls related Google Trends terms below.">
-                <input className="cl-input" value={altKeywords} onChange={e => setAltKeywords(e.target.value)}
-                  placeholder="e.g. wireless earbuds, noise cancelling"
-                  style={inputBase} />
-              </Field>
-
-              <Field label="Benefits/Features to Highlight:" hint="Optional — comma-separated. WCAG favors describing function and purpose over pure appearance, so these get woven in where true to the media.">
-                <input className="cl-input" value={altBenefits} onChange={e => setAltBenefits(e.target.value)}
-                  placeholder="e.g. 30-hour battery, water resistant"
                   style={inputBase} />
               </Field>
 
@@ -443,9 +438,9 @@ Return ONLY valid JSON, no markdown, no preamble:
             )}
 
             {!loading && result?.type === "alttext-image" && (() => {
-              const kw = altKeywords.split(",").map(k => k.trim()).filter(Boolean);
-              const bf = altBenefits.split(",").map(k => k.trim()).filter(Boolean);
-              const rankedKeywords = [...(result.keyword_scores || [])].sort((a, b) => (b.score || 0) - (a.score || 0));
+              const kw = (result.seo_keywords || []).map(k => k.keyword);
+              const bf = result.benefits_highlighted || [];
+              const rankedKeywords = [...(result.seo_keywords || [])].sort((a, b) => (b.score || 0) - (a.score || 0));
               return (
               <div className="cl-fade" style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 16 }}>
                 {altImagePreview && result.sourceMode === "upload" && (
@@ -478,36 +473,25 @@ Return ONLY valid JSON, no markdown, no preamble:
                   <Pill type="fix">{result.notes}</Pill>
                 )}
 
-                {(result.keywords_used?.length > 0 || result.benefits_highlighted?.length > 0) && (
+                {(kw.length > 0 || bf.length > 0) && (
                   <div style={{ display: "flex", gap: 14, fontSize: 11, color: "#9A9590" }}>
-                    {result.keywords_used?.length > 0 && <span><mark style={{ background: "#DFF5E8", color: "#1A5C38", padding: "1px 5px", borderRadius: 3 }}>▉</mark> Keyword</span>}
-                    {result.benefits_highlighted?.length > 0 && <span><mark style={{ background: "#E4EBFF", color: "#2A3D80", padding: "1px 5px", borderRadius: 3 }}>▉</mark> Benefit</span>}
-                  </div>
-                )}
-
-                {result.keywords_used?.length > 0 && (
-                  <div>
-                    <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Keywords Used</p>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {result.keywords_used.map((k, i) => (
-                        <span key={i} style={{ padding: "5px 11px", background: "#F0FBF5", border: "1px solid #1E7A4820", borderRadius: 20, fontSize: 12, color: "#1A5C38", fontFamily: "'DM Sans', sans-serif" }}>{k}</span>
-                      ))}
-                    </div>
+                    {kw.length > 0 && <span><mark style={{ background: "#DFF5E8", color: "#1A5C38", padding: "1px 5px", borderRadius: 3 }}>▉</mark> Keyword</span>}
+                    {bf.length > 0 && <span><mark style={{ background: "#E4EBFF", color: "#2A3D80", padding: "1px 5px", borderRadius: 3 }}>▉</mark> Benefit</span>}
                   </div>
                 )}
 
                 {rankedKeywords.length > 0 && (
                   <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px" }}>
-                    <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 14 }}>Keyword Ranking</p>
+                    <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 14 }}>Suggested SEO Keywords</p>
                     {rankedKeywords.map((k, i) => <ScoreBar key={i} label={k.keyword} score={k.score} note={k.note} />)}
                   </div>
                 )}
 
-                {result.benefits_highlighted?.length > 0 && (
+                {bf.length > 0 && (
                   <div>
                     <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Benefits Highlighted</p>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {result.benefits_highlighted.map((f, i) => (
+                      {bf.map((f, i) => (
                         <span key={i} style={{ padding: "5px 11px", background: "#F5F8FF", border: "1px solid #3A5FC820", borderRadius: 20, fontSize: 12, color: "#2A3D80", fontFamily: "'DM Sans', sans-serif" }}>{f}</span>
                       ))}
                     </div>
@@ -520,9 +504,9 @@ Return ONLY valid JSON, no markdown, no preamble:
             })()}
 
             {!loading && result?.type === "alttext-video" && (() => {
-              const kw = altKeywords.split(",").map(k => k.trim()).filter(Boolean);
-              const bf = altBenefits.split(",").map(k => k.trim()).filter(Boolean);
-              const rankedKeywords = [...(result.keyword_scores || [])].sort((a, b) => (b.score || 0) - (a.score || 0));
+              const kw = (result.seo_keywords || []).map(k => k.keyword);
+              const bf = result.benefits_highlighted || [];
+              const rankedKeywords = [...(result.seo_keywords || [])].sort((a, b) => (b.score || 0) - (a.score || 0));
               return (
               <div className="cl-fade" style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 16 }}>
                 <WcagBadge info={WCAG_INFO.video_alt} />
@@ -561,36 +545,25 @@ Return ONLY valid JSON, no markdown, no preamble:
                   <Pill type="fix">{result.notes}</Pill>
                 )}
 
-                {(result.keywords_used?.length > 0 || result.benefits_highlighted?.length > 0) && (
+                {(kw.length > 0 || bf.length > 0) && (
                   <div style={{ display: "flex", gap: 14, fontSize: 11, color: "#9A9590" }}>
-                    {result.keywords_used?.length > 0 && <span><mark style={{ background: "#DFF5E8", color: "#1A5C38", padding: "1px 5px", borderRadius: 3 }}>▉</mark> Keyword</span>}
-                    {result.benefits_highlighted?.length > 0 && <span><mark style={{ background: "#E4EBFF", color: "#2A3D80", padding: "1px 5px", borderRadius: 3 }}>▉</mark> Benefit</span>}
-                  </div>
-                )}
-
-                {result.keywords_used?.length > 0 && (
-                  <div>
-                    <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Keywords Used</p>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {result.keywords_used.map((k, i) => (
-                        <span key={i} style={{ padding: "5px 11px", background: "#F0FBF5", border: "1px solid #1E7A4820", borderRadius: 20, fontSize: 12, color: "#1A5C38", fontFamily: "'DM Sans', sans-serif" }}>{k}</span>
-                      ))}
-                    </div>
+                    {kw.length > 0 && <span><mark style={{ background: "#DFF5E8", color: "#1A5C38", padding: "1px 5px", borderRadius: 3 }}>▉</mark> Keyword</span>}
+                    {bf.length > 0 && <span><mark style={{ background: "#E4EBFF", color: "#2A3D80", padding: "1px 5px", borderRadius: 3 }}>▉</mark> Benefit</span>}
                   </div>
                 )}
 
                 {rankedKeywords.length > 0 && (
                   <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px" }}>
-                    <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 14 }}>Keyword Ranking</p>
+                    <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 14 }}>Suggested SEO Keywords</p>
                     {rankedKeywords.map((k, i) => <ScoreBar key={i} label={k.keyword} score={k.score} note={k.note} />)}
                   </div>
                 )}
 
-                {result.benefits_highlighted?.length > 0 && (
+                {bf.length > 0 && (
                   <div>
                     <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Benefits Highlighted</p>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {result.benefits_highlighted.map((f, i) => (
+                      {bf.map((f, i) => (
                         <span key={i} style={{ padding: "5px 11px", background: "#F5F8FF", border: "1px solid #3A5FC820", borderRadius: 20, fontSize: 12, color: "#2A3D80", fontFamily: "'DM Sans', sans-serif" }}>{f}</span>
                       ))}
                     </div>
@@ -609,7 +582,7 @@ Return ONLY valid JSON, no markdown, no preamble:
                   <path d="M7 9h10M7 12.5h7M7 16h4" stroke="#B0ABA4" strokeWidth="1.5" strokeLinecap="round" />
                 </svg>
                 <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 15, color: "#1C1915", margin: 0 }}>Your results will show up here</p>
-                <p style={{ fontSize: 13, color: "#9A9590", lineHeight: 1.6, margin: 0 }}>Fill in the form above, then run it — this space fills in with your generated alt text.</p>
+                <p style={{ fontSize: 13, color: "#9A9590", lineHeight: 1.6, margin: 0 }}>Fill in the form above, then run it — this space fills in with your generated alt text, suggested SEO keywords, and highlighted benefits.</p>
               </div>
             )}
 
