@@ -66,6 +66,21 @@ function describeError(e) {
   return "Something went wrong. Try again in a moment.";
 }
 
+// Shared JSON parser for model responses. Model output occasionally comes back
+// with invalid JSON (e.g. an unescaped quote or raw newline inside a string
+// field), which throws a raw, unfriendly browser error if parsed directly.
+// This wraps that in the same friendly PARSE_ERROR message callClaude() uses,
+// and is reused by every alt-text path (upload, description, video) so none
+// of them can leak a raw "Unterminated string in JSON..." error to the UI.
+function parseModelJson(rawText) {
+  const clean = (rawText || "").replace(/```json\n?|```/g, "").trim();
+  try {
+    return JSON.parse(clean);
+  } catch {
+    throw new Error("PARSE_ERROR: the AI's response wasn't valid JSON. This usually means the description ran long and a quote or line break inside it broke the format. Try again, or shorten the Context field if it keeps happening.");
+  }
+}
+
 function Field({ label, hint, required, children }) {
   return (
     <div className="cl-field" style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
@@ -205,6 +220,13 @@ Also, without being asked for specific terms, use your own judgment to identify:
 
 const SEO_BENEFITS_SCHEMA = `"seo_keywords":[{"keyword":"","score":0,"note":""}],"benefits_highlighted":[]`;
 
+// Appended to every prompt that expects raw JSON back. Long free-text fields
+// (long_description, transcript_captions) are the most common source of
+// invalid JSON, since a stray literal newline or unescaped quote inside them
+// breaks the parser — this tells the model explicitly how to avoid that.
+const JSON_VALIDITY_INSTRUCTION = `
+Your entire reply must be a single valid JSON object and nothing else — no markdown fences, no preamble or sign-off. Inside every string value: escape any newline as \\n (never a raw line break), escape any double quote as \\", and do not truncate — if a field would run long, keep it concise enough to finish within the response instead of cutting off mid-sentence.`;
+
 export default function CopyLab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -260,40 +282,41 @@ export default function CopyLab() {
           const prompt = `Write accessibility alt text for this image.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}
 ${SEO_BENEFITS_INSTRUCTION}
 Return ONLY valid JSON, no markdown, no preamble:
-{"alt_text":"concise WCAG-appropriate alt text, ideally under 125 characters, describing what's functionally important about the image","long_description":"a fuller description for complex images (charts, infographics, multi-element layouts) — empty string if the image is simple enough that alt_text alone covers it","notes":"any accessibility considerations, e.g. text baked into the image that should also appear as real text nearby",${SEO_BENEFITS_SCHEMA}}`;
+{"alt_text":"concise WCAG-appropriate alt text, ideally under 125 characters, describing what's functionally important about the image","long_description":"a fuller description for complex images (charts, infographics, multi-element layouts) — empty string if the image is simple enough that alt_text alone covers it","notes":"any accessibility considerations, e.g. text baked into the image that should also appear as real text nearby",${SEO_BENEFITS_SCHEMA}}
+${JSON_VALIDITY_INSTRUCTION}`;
           const res = await fetch("/api/analyze-media", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ mode: "image", prompt, imageBase64: altImageBase64, imageMimeType: altImageMimeType, maxTokens: 1200 }),
+            body: JSON.stringify({ mode: "image", prompt, imageBase64: altImageBase64, imageMimeType: altImageMimeType, maxTokens: 1800 }),
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data?.error || "Request failed.");
-          const clean = data.text.replace(/```json\n?|```/g, "").trim();
-          parsed = JSON.parse(clean);
+          parsed = parseModelJson(data.text);
           sourceMode = "upload";
         } else {
           const sys = `You are an accessibility specialist writing image alt text from a text description (the actual image is confidential and can't be uploaded). ${SENTENCE_CASE_RULE} Return ONLY valid JSON. No markdown, no preamble.`;
           const usr = `Write accessibility alt text for an image described as: "${altImageDescription.trim()}"${altContext.trim() ? `\nContext: ${altContext.trim()}` : ""}
 ${SEO_BENEFITS_INSTRUCTION}
 Return:
-{"alt_text":"concise WCAG-appropriate alt text under 125 characters","long_description":"a fuller description if the image sounds complex — empty string otherwise","notes":"any accessibility considerations",${SEO_BENEFITS_SCHEMA}}`;
-          parsed = await callClaude(sys, usr, 1200);
+{"alt_text":"concise WCAG-appropriate alt text under 125 characters","long_description":"a fuller description if the image sounds complex — empty string otherwise","notes":"any accessibility considerations",${SEO_BENEFITS_SCHEMA}}
+${JSON_VALIDITY_INSTRUCTION}`;
+          parsed = await callClaude(sys, usr, 1800);
           sourceMode = "description";
         }
       } else {
         const prompt = `Watch this video and provide accessibility information about it.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}
 ${SEO_BENEFITS_INSTRUCTION}
 Return ONLY valid JSON, no markdown, no preamble:
-{"video_alt_text":"a concise description of what this video shows/is about, for accessibility (like alt text, but for video)","appears_captioned":true or false — true only if you can actually SEE burned-in/open captions in the video frames themselves; if you can't tell from the visuals, use false,"transcript_captions":"a full transcript of the spoken audio, formatted as readable caption text with natural line breaks — this is a draft caption track to use IF the video turns out to lack real closed captions on YouTube","notes":"1-2 sentences of any other accessibility notes, e.g. important on-screen text or visuals not covered by the audio",${SEO_BENEFITS_SCHEMA}}`;
+{"video_alt_text":"a concise description of what this video shows/is about, for accessibility (like alt text, but for video)","appears_captioned":true or false — true only if you can actually SEE burned-in/open captions in the video frames themselves; if you can't tell from the visuals, use false,"transcript_captions":"a full transcript of the spoken audio, formatted as readable caption text with natural line breaks — this is a draft caption track to use IF the video turns out to lack real closed captions on YouTube","notes":"1-2 sentences of any other accessibility notes, e.g. important on-screen text or visuals not covered by the audio",${SEO_BENEFITS_SCHEMA}}
+${JSON_VALIDITY_INSTRUCTION}`;
         const res = await fetch("/api/analyze-media", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode: "video", prompt, videoUrl: altYoutubeUrl.trim(), maxTokens: 4000 }),
+          body: JSON.stringify({ mode: "video", prompt, videoUrl: altYoutubeUrl.trim(), maxTokens: 4500 }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || "Request failed.");
-        const clean = data.text.replace(/```json\n?|```/g, "").trim();
-        parsed = JSON.parse(clean);
+        parsed = parseModelJson(data.text);
       }
 
       // Now that we know which keyword the model itself surfaced as most relevant,
