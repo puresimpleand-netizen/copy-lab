@@ -5,6 +5,7 @@ const SENTENCE_CASE_RULE = "Grammar rule: use sentence case for all copy — cap
 const API_URL = "/api/generate";
 const TRENDS_API_URL = "/api/trends";
 
+// Definition for labelStyle added to prevent reference errors
 const labelStyle = {
   fontSize: "14px",
   fontWeight: 600,
@@ -14,6 +15,7 @@ const labelStyle = {
   marginBottom: "6px"
 };
 
+// Updated to match official WCAG 2.2 standards
 const WCAG_INFO = {
   image_alt: {
     criterion: "WCAG 2.2 — SC 1.1.1 Non-text Content (Level A)",
@@ -143,7 +145,7 @@ function ScoreBar({ label, score, note }) {
 
 function TrendingKeywordsPanel({ keyword, data }) {
   if (!keyword?.trim()) return null;
-  const trendsUrl = `https://google.com{encodeURIComponent(keyword.trim())}`;
+  const trendsUrl = `https://trends.google.com/explore?geo=US&hl=en-US&q=${encodeURIComponent(keyword.trim())}`;
   const rising = data?.rising || [];
   const top = data?.top || [];
   const list = rising.length ? rising : top;
@@ -156,7 +158,7 @@ function TrendingKeywordsPanel({ keyword, data }) {
         </p>
         <a href={trendsUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: "#C8401A", fontFamily: "'DM Mono', monospace", textDecoration: "none" }}>View on Trends ↗</a>
       </div>
-      {list.length > 0 && (
+      {list.length > 0 ? (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
           {list.map((item, i) => (
             <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 11px", background: "#F0FBF5", border: "1px solid #1E7A4820", borderRadius: 20, fontSize: 12, color: "#1A5C38" }}>
@@ -165,34 +167,9 @@ function TrendingKeywordsPanel({ keyword, data }) {
             </span>
           ))}
         </div>
+      ) : (
+        <p style={{ fontSize: 12, color: "#9A9590", margin: 0 }}>No trending keywords found.</p>
       )}
-    </div>
-  );
-}
-
-// Added root application wrapper component to expose a default export to Vite
-export default function App() {
-  const [keyword, setKeyword] = useState("accessibility");
-  
-  return (
-    <div style={{ padding: "40px", maxWidth: "600px", margin: "0 auto", fontFamily: "'DM Sans', sans-serif" }}>
-      <WcagBadge info={WCAG_INFO.image_alt} />
-      <div style={{ margin: "24px 0" }}>
-        <Field 
-          label="Context framework key" 
-          hint="Provide an anchor subject to query structural tags."
-          required
-        >
-          <input 
-            type="text" 
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #DDD9D0" }} 
-          />
-        </Field>
-      </div>
-      <ScoreBar label="Compliance score" score={95} note="Meets all requirements for descriptive context labels." />
-      <TrendingKeywordsPanel keyword={keyword} data={{ rising: [{ query: "wcag 2.2 checklist", value: "+120%" }] }} />
     </div>
   );
 }
