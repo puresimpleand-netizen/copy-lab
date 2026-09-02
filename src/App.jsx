@@ -226,7 +226,7 @@ const SEO_BENEFITS_SCHEMA = `"seo_keywords":[{"keyword":"","score":0,"note":""}]
 // feature or color names.
 const PRECISION_INSTRUCTION = `
 Before writing, carefully count every distinct object, device, or person visible — look closely for subtle differences (e.g. two similar-looking colors on the same device model are likely different colorways, not the same unit) and treat each visually distinct unit as its own item, even when the difference is subtle. State what you counted, and flag any calls you're not fully certain of (e.g. two similar light colors that are hard to tell apart at this resolution), as "object_count_check" (1-2 sentences).
-Use precise, correct feature/function/color names rather than vague or invented ones. If Known Details (below) give exact names, use those verbatim instead of guessing. Avoid unnecessary decorative or subjective language (e.g. "stunning," "sleek") that doesn't serve accessibility — keep descriptions functional and accurate, and leave out details that aren't useful for someone who can't see the media.`;
+Use precise, correct feature/function/color names rather than vague or invented ones. Avoid unnecessary decorative or subjective language (e.g. "stunning," "sleek") that doesn't serve accessibility — keep descriptions functional and accurate, and leave out details that aren't useful for someone who can't see the media.`;
 
 // Internal review also found the tool's single output swung unpredictably
 // between describing the product itself and describing on-screen content,
@@ -267,7 +267,6 @@ export default function CopyLab() {
   const [altImageDescription, setAltImageDescription] = useState(""); // fallback when image can't be uploaded (confidential)
   const [altContext, setAltContext] = useState("");
   const [altYoutubeUrl, setAltYoutubeUrl] = useState("");
-  const [altKnownDetails, setAltKnownDetails] = useState("");
   const [selectedAltVariant, setSelectedAltVariant] = useState(0);
 
   const handleCopy = (text, id) => {
@@ -302,16 +301,12 @@ export default function CopyLab() {
     if (!hasImageInput && !hasVideoInput) return;
     setLoading(true); setError(null); setResult(null); setSelectedAltVariant(0);
 
-    const knownDetailsBlock = altKnownDetails.trim()
-      ? `\nKnown details to treat as ground truth (use these exactly instead of guessing where they apply, e.g. exact count, color names, or feature/function names): ${altKnownDetails.trim()}`
-      : "";
-
     try {
       let parsed, sourceMode;
 
       if (altMode === "image") {
         if (altImageBase64) {
-          const prompt = `Write accessibility alt text for this image.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}${knownDetailsBlock}
+          const prompt = `Write accessibility alt text for this image.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}
 ${PRECISION_INSTRUCTION}
 ${IMAGE_VARIANTS_INSTRUCTION}
 ${SEO_BENEFITS_INSTRUCTION}
@@ -329,7 +324,7 @@ ${JSON_VALIDITY_INSTRUCTION}`;
           sourceMode = "upload";
         } else {
           const sys = `You are an accessibility specialist writing image alt text from a text description (the actual image is confidential and can't be uploaded). ${SENTENCE_CASE_RULE} Return ONLY valid JSON. No markdown, no preamble.`;
-          const usr = `Write accessibility alt text for an image described as: "${altImageDescription.trim()}"${altContext.trim() ? `\nContext: ${altContext.trim()}` : ""}${knownDetailsBlock}
+          const usr = `Write accessibility alt text for an image described as: "${altImageDescription.trim()}"${altContext.trim() ? `\nContext: ${altContext.trim()}` : ""}
 ${PRECISION_INSTRUCTION}
 ${IMAGE_VARIANTS_INSTRUCTION}
 ${SEO_BENEFITS_INSTRUCTION}
@@ -340,7 +335,7 @@ ${JSON_VALIDITY_INSTRUCTION}`;
           sourceMode = "description";
         }
       } else {
-        const prompt = `Watch this video and provide accessibility information about it.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}${knownDetailsBlock}
+        const prompt = `Watch this video and provide accessibility information about it.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}
 ${PRECISION_INSTRUCTION}
 ${VIDEO_VARIANTS_INSTRUCTION}
 ${SEO_BENEFITS_INSTRUCTION}
@@ -466,12 +461,6 @@ ${JSON_VALIDITY_INSTRUCTION}`;
                 <input className="cl-input" value={altContext} onChange={e => setAltContext(e.target.value)}
                   placeholder="e.g. hero image on Galaxy S26 product page"
                   style={inputBase} />
-              </Field>
-
-              <Field label="Known Details:" hint="Optional — if you already know the exact count, color names, or feature/function names, enter them here. The generator will use these as ground truth instead of guessing at things that are hard to make out (e.g. similar colorways at low resolution).">
-                <textarea className="cl-input" value={altKnownDetails} onChange={e => setAltKnownDetails(e.target.value)} rows={2}
-                  placeholder="e.g. 4 phones shown: Icyblue, White, Black, Green"
-                  style={{ ...inputBase, resize: "none" }} />
               </Field>
 
               <button className="cl-btn" onClick={handleAltText}
