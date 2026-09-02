@@ -7,15 +7,15 @@ const TRENDS_API_URL = "/api/trends";
 
 const WCAG_INFO = {
   image_alt: {
-    criterion: "WCAG 2.1 — SC 1.1.1 Non-text Content (Level A)",
+    criterion: "WCAG 2.2 — SC 1.1.1 Non-text Content (Level A)",
     note: "Non-text content is given a text alternative that serves the equivalent purpose.",
   },
   video_captions: {
-    criterion: "WCAG 2.1 — SC 1.2.2 Captions (Prerecorded) (Level A)",
+    criterion: "WCAG 2.2 — SC 1.2.2 Captions (Prerecorded) (Level A)",
     note: "Captions are provided for all prerecorded audio content in synchronized media.",
   },
   video_alt: {
-    criterion: "WCAG 2.1 — SC 1.2.5 Audio Description (Prerecorded) (Level AA)",
+    criterion: "WCAG 2.2 — SC 1.2.5 Audio Description (Prerecorded) (Level AA)",
     note: "An alternative/description conveys the video's visual information for users who can't see it.",
   },
 };
