@@ -220,6 +220,32 @@ Also, without being asked for specific terms, use your own judgment to identify:
 
 const SEO_BENEFITS_SCHEMA = `"seo_keywords":[{"keyword":"","score":0,"note":""}],"benefits_highlighted":[]`;
 
+// Precision guidance driven by internal review feedback: the generator was
+// merging visually-similar-but-distinct items (e.g. two similar phone colors
+// counted as one device) and using vague/decorative language instead of exact
+// feature or color names.
+const PRECISION_INSTRUCTION = `
+Before writing, carefully count every distinct object, device, or person visible — look closely for subtle differences (e.g. two similar-looking colors on the same device model are likely different colorways, not the same unit) and treat each visually distinct unit as its own item, even when the difference is subtle. State what you counted, and flag any calls you're not fully certain of (e.g. two similar light colors that are hard to tell apart at this resolution), as "object_count_check" (1-2 sentences).
+Use precise, correct feature/function/color names rather than vague or invented ones. If Known Details (below) give exact names, use those verbatim instead of guessing. Avoid unnecessary decorative or subjective language (e.g. "stunning," "sleek") that doesn't serve accessibility — keep descriptions functional and accurate, and leave out details that aren't useful for someone who can't see the media.`;
+
+// Internal review also found the tool's single output swung unpredictably
+// between describing the product itself and describing on-screen content,
+// with no way to steer it. Producing both explicitly, labeled, lets the user
+// pick whichever framing actually fits the placement (e.g. product-focused
+// for a PDP hero shot vs detail-focused for a feature screenshot).
+const IMAGE_VARIANTS_INSTRUCTION = `
+Write 2 alt text variants with deliberately different framing, since the right focus depends on where this image will be used:
+1. "Product-focused": emphasizes the product itself — angle, form factor, color(s), and how many units are shown. Best when the product is the actual subject, e.g. a hero/PDP image.
+2. "Detail-focused": emphasizes what's displayed on-screen or shown in more granular detail (UI, wallpaper, on-screen content). Best when that on-screen content is itself the subject, e.g. a feature screenshot.
+For each variant, give a 1-sentence "rationale" on the situation where that framing is the better fit.`;
+
+const VIDEO_VARIANTS_INSTRUCTION = `
+Write 2 video alt text variants with deliberately different framing:
+1. "Product-focused": emphasizes the product/action itself.
+2. "Content-focused": emphasizes on-screen UI/content shown during the video.
+For each variant, give a 1-sentence "rationale" on the situation where that framing is the better fit.`;
+
+
 // Appended to every prompt that expects raw JSON back. Long free-text fields
 // (long_description, transcript_captions) are the most common source of
 // invalid JSON, since a stray literal newline or unescaped quote inside them
@@ -241,6 +267,8 @@ export default function CopyLab() {
   const [altImageDescription, setAltImageDescription] = useState(""); // fallback when image can't be uploaded (confidential)
   const [altContext, setAltContext] = useState("");
   const [altYoutubeUrl, setAltYoutubeUrl] = useState("");
+  const [altKnownDetails, setAltKnownDetails] = useState("");
+  const [selectedAltVariant, setSelectedAltVariant] = useState(0);
 
   const handleCopy = (text, id) => {
     navigator.clipboard.writeText(text);
@@ -272,22 +300,28 @@ export default function CopyLab() {
     const hasImageInput = altMode === "image" && (altImageBase64 || altImageDescription.trim());
     const hasVideoInput = altMode === "video" && altYoutubeUrl.trim();
     if (!hasImageInput && !hasVideoInput) return;
-    setLoading(true); setError(null); setResult(null);
+    setLoading(true); setError(null); setResult(null); setSelectedAltVariant(0);
+
+    const knownDetailsBlock = altKnownDetails.trim()
+      ? `\nKnown details to treat as ground truth (use these exactly instead of guessing where they apply, e.g. exact count, color names, or feature/function names): ${altKnownDetails.trim()}`
+      : "";
 
     try {
       let parsed, sourceMode;
 
       if (altMode === "image") {
         if (altImageBase64) {
-          const prompt = `Write accessibility alt text for this image.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}
+          const prompt = `Write accessibility alt text for this image.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}${knownDetailsBlock}
+${PRECISION_INSTRUCTION}
+${IMAGE_VARIANTS_INSTRUCTION}
 ${SEO_BENEFITS_INSTRUCTION}
 Return ONLY valid JSON, no markdown, no preamble:
-{"alt_text":"concise WCAG-appropriate alt text, ideally under 125 characters, describing what's functionally important about the image","long_description":"a fuller description for complex images (charts, infographics, multi-element layouts) — empty string if the image is simple enough that alt_text alone covers it","notes":"any accessibility considerations, e.g. text baked into the image that should also appear as real text nearby",${SEO_BENEFITS_SCHEMA}}
+{"alt_text_variants":[{"focus_label":"Product-focused","alt_text":"concise WCAG-appropriate alt text, ideally under 125 characters","long_description":"a fuller description for complex images — empty string if alt_text alone covers it","rationale":""},{"focus_label":"Detail-focused","alt_text":"","long_description":"","rationale":""}],"notes":"any accessibility considerations, e.g. text baked into the image that should also appear as real text nearby","object_count_check":"",${SEO_BENEFITS_SCHEMA}}
 ${JSON_VALIDITY_INSTRUCTION}`;
           const res = await fetch("/api/analyze-media", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ mode: "image", prompt, imageBase64: altImageBase64, imageMimeType: altImageMimeType, maxTokens: 1800 }),
+            body: JSON.stringify({ mode: "image", prompt, imageBase64: altImageBase64, imageMimeType: altImageMimeType, maxTokens: 2200 }),
           });
           const data = await res.json();
           if (!res.ok) throw new Error(data?.error || "Request failed.");
@@ -295,24 +329,28 @@ ${JSON_VALIDITY_INSTRUCTION}`;
           sourceMode = "upload";
         } else {
           const sys = `You are an accessibility specialist writing image alt text from a text description (the actual image is confidential and can't be uploaded). ${SENTENCE_CASE_RULE} Return ONLY valid JSON. No markdown, no preamble.`;
-          const usr = `Write accessibility alt text for an image described as: "${altImageDescription.trim()}"${altContext.trim() ? `\nContext: ${altContext.trim()}` : ""}
+          const usr = `Write accessibility alt text for an image described as: "${altImageDescription.trim()}"${altContext.trim() ? `\nContext: ${altContext.trim()}` : ""}${knownDetailsBlock}
+${PRECISION_INSTRUCTION}
+${IMAGE_VARIANTS_INSTRUCTION}
 ${SEO_BENEFITS_INSTRUCTION}
 Return:
-{"alt_text":"concise WCAG-appropriate alt text under 125 characters","long_description":"a fuller description if the image sounds complex — empty string otherwise","notes":"any accessibility considerations",${SEO_BENEFITS_SCHEMA}}
+{"alt_text_variants":[{"focus_label":"Product-focused","alt_text":"concise WCAG-appropriate alt text under 125 characters","long_description":"a fuller description if the image sounds complex — empty string otherwise","rationale":""},{"focus_label":"Detail-focused","alt_text":"","long_description":"","rationale":""}],"notes":"any accessibility considerations","object_count_check":"",${SEO_BENEFITS_SCHEMA}}
 ${JSON_VALIDITY_INSTRUCTION}`;
-          parsed = await callClaude(sys, usr, 1800);
+          parsed = await callClaude(sys, usr, 2200);
           sourceMode = "description";
         }
       } else {
-        const prompt = `Watch this video and provide accessibility information about it.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}
+        const prompt = `Watch this video and provide accessibility information about it.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}${knownDetailsBlock}
+${PRECISION_INSTRUCTION}
+${VIDEO_VARIANTS_INSTRUCTION}
 ${SEO_BENEFITS_INSTRUCTION}
 Return ONLY valid JSON, no markdown, no preamble:
-{"video_alt_text":"a concise description of what this video shows/is about, for accessibility (like alt text, but for video)","appears_captioned":true or false — true only if you can actually SEE burned-in/open captions in the video frames themselves; if you can't tell from the visuals, use false,"transcript_captions":"a full transcript of the spoken audio, formatted as readable caption text with natural line breaks — this is a draft caption track to use IF the video turns out to lack real closed captions on YouTube","notes":"1-2 sentences of any other accessibility notes, e.g. important on-screen text or visuals not covered by the audio",${SEO_BENEFITS_SCHEMA}}
+{"video_alt_text_variants":[{"focus_label":"Product-focused","video_alt_text":"a concise description of what this video shows/is about, for accessibility (like alt text, but for video)","rationale":""},{"focus_label":"Content-focused","video_alt_text":"","rationale":""}],"appears_captioned":true or false — true only if you can actually SEE burned-in/open captions in the video frames themselves; if you can't tell from the visuals, use false,"transcript_captions":"a full transcript of the spoken audio, formatted as readable caption text with natural line breaks — this is a draft caption track to use IF the video turns out to lack real closed captions on YouTube","notes":"1-2 sentences of any other accessibility notes, e.g. important on-screen text or visuals not covered by the audio","object_count_check":"",${SEO_BENEFITS_SCHEMA}}
 ${JSON_VALIDITY_INSTRUCTION}`;
         const res = await fetch("/api/analyze-media", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ mode: "video", prompt, videoUrl: altYoutubeUrl.trim(), maxTokens: 4500 }),
+          body: JSON.stringify({ mode: "video", prompt, videoUrl: altYoutubeUrl.trim(), maxTokens: 5000 }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data?.error || "Request failed.");
@@ -353,6 +391,8 @@ ${JSON_VALIDITY_INSTRUCTION}`;
         @keyframes blink { 0%,100% { opacity:0.3; } 50% { opacity:1; } }
         .cl-fade { animation: pop 0.3s ease; }
         .cl-dot { animation: blink 1.2s ease-in-out infinite; }
+        .cl-vtab { transition: background 0.15s, color 0.15s; }
+        .cl-vtab.sel { background: #1C1915 !important; color: #F5F2EC !important; }
         .cl-shell * { text-align: left; }
         @media (max-width: 600px) {
           .cl-shell { padding-left: 16px !important; padding-right: 16px !important; }
@@ -422,10 +462,16 @@ ${JSON_VALIDITY_INSTRUCTION}`;
                 </Field>
               )}
 
-              <Field label="Context:" hint="Optional — product, page, or purpose, so the description (and the AI's own SEO keyword suggestions) fits where it'll be used.">
+              <Field label="Context:" hint="Optional — product, page, or purpose (e.g. 'hero image on PDP' vs 'feature screenshot'), so both variants and the AI's SEO suggestions fit where it'll be used.">
                 <input className="cl-input" value={altContext} onChange={e => setAltContext(e.target.value)}
                   placeholder="e.g. hero image on Galaxy S26 product page"
                   style={inputBase} />
+              </Field>
+
+              <Field label="Known Details:" hint="Optional — if you already know the exact count, color names, or feature/function names, enter them here. The generator will use these as ground truth instead of guessing at things that are hard to make out (e.g. similar colorways at low resolution).">
+                <textarea className="cl-input" value={altKnownDetails} onChange={e => setAltKnownDetails(e.target.value)} rows={2}
+                  placeholder="e.g. 4 phones shown: Icyblue, White, Black, Green"
+                  style={{ ...inputBase, resize: "none" }} />
               </Field>
 
               <button className="cl-btn" onClick={handleAltText}
@@ -464,6 +510,8 @@ ${JSON_VALIDITY_INSTRUCTION}`;
               const kw = (result.seo_keywords || []).map(k => k.keyword);
               const bf = result.benefits_highlighted || [];
               const rankedKeywords = [...(result.seo_keywords || [])].sort((a, b) => (b.score || 0) - (a.score || 0));
+              const variants = result.alt_text_variants || [];
+              const v = variants[selectedAltVariant] || variants[0];
               return (
               <div className="cl-fade" style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 16 }}>
                 {altImagePreview && result.sourceMode === "upload" && (
@@ -472,24 +520,49 @@ ${JSON_VALIDITY_INSTRUCTION}`;
 
                 <WcagBadge info={WCAG_INFO.image_alt} />
 
-                <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px", position: "relative" }}>
-                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Alt Text</p>
-                  <p style={{ fontSize: 15, color: "#1C1915", lineHeight: 1.55, fontWeight: 600, paddingRight: 52 }}>{highlightText(result.alt_text, kw, bf)}</p>
-                  <button className="cl-copy" onClick={() => handleCopy(result.alt_text, "alt-main")}
-                    style={{ position: "absolute", top: 14, right: 14, padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === "alt-main" ? "#1E7A48" : "#9A9590" }}>
-                    {copied === "alt-main" ? "✓" : "Copy"}
-                  </button>
-                </div>
+                {result.object_count_check && (
+                  <Pill type="flag">🔍 {result.object_count_check}</Pill>
+                )}
 
-                {result.long_description && (
-                  <div style={{ background: "#F7F5F0", border: "1px solid #DDD9D0", borderRadius: 8, padding: "14px 16px", position: "relative" }}>
-                    <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Long Description</p>
-                    <p style={{ fontSize: 13, color: "#3A3730", lineHeight: 1.6, paddingRight: 52 }}>{highlightText(result.long_description, kw, bf)}</p>
-                    <button className="cl-copy" onClick={() => handleCopy(result.long_description, "alt-long")}
-                      style={{ position: "absolute", top: 14, right: 14, padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === "alt-long" ? "#1E7A48" : "#9A9590" }}>
-                      {copied === "alt-long" ? "✓" : "Copy"}
-                    </button>
+                {variants.length > 1 && (
+                  <div style={{ display: "flex", gap: 5 }}>
+                    {variants.map((vv, i) => (
+                      <button key={i} className={`cl-vtab ${selectedAltVariant === i ? "sel" : ""}`} onClick={() => setSelectedAltVariant(i)}
+                        style={{ flex: 1, padding: "9px 6px", background: "#E8E4DC", color: "#7A7570", border: "none", borderRadius: 6, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.04em" }}>
+                        {vv.focus_label || `Variant ${i + 1}`}
+                      </button>
+                    ))}
                   </div>
+                )}
+
+                {v && (
+                  <>
+                    <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px", position: "relative" }}>
+                      <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Alt Text</p>
+                      <p style={{ fontSize: 15, color: "#1C1915", lineHeight: 1.55, fontWeight: 600, paddingRight: 52 }}>{highlightText(v.alt_text, kw, bf)}</p>
+                      <button className="cl-copy" onClick={() => handleCopy(v.alt_text, "alt-main")}
+                        style={{ position: "absolute", top: 14, right: 14, padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === "alt-main" ? "#1E7A48" : "#9A9590" }}>
+                        {copied === "alt-main" ? "✓" : "Copy"}
+                      </button>
+                    </div>
+
+                    {v.rationale && (
+                      <div style={{ padding: "12px 13px", background: "#F7F5F0", border: "1px solid #DDD9D0", borderRadius: 8 }}>
+                        <p style={{ fontSize: 12, color: "#6B665F", lineHeight: 1.55, margin: 0 }}>{v.rationale}</p>
+                      </div>
+                    )}
+
+                    {v.long_description && (
+                      <div style={{ background: "#F7F5F0", border: "1px solid #DDD9D0", borderRadius: 8, padding: "14px 16px", position: "relative" }}>
+                        <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Long Description</p>
+                        <p style={{ fontSize: 13, color: "#3A3730", lineHeight: 1.6, paddingRight: 52 }}>{highlightText(v.long_description, kw, bf)}</p>
+                        <button className="cl-copy" onClick={() => handleCopy(v.long_description, "alt-long")}
+                          style={{ position: "absolute", top: 14, right: 14, padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === "alt-long" ? "#1E7A48" : "#9A9590" }}>
+                          {copied === "alt-long" ? "✓" : "Copy"}
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
 
                 {result.notes && (
@@ -530,18 +603,45 @@ ${JSON_VALIDITY_INSTRUCTION}`;
               const kw = (result.seo_keywords || []).map(k => k.keyword);
               const bf = result.benefits_highlighted || [];
               const rankedKeywords = [...(result.seo_keywords || [])].sort((a, b) => (b.score || 0) - (a.score || 0));
+              const variants = result.video_alt_text_variants || [];
+              const v = variants[selectedAltVariant] || variants[0];
               return (
               <div className="cl-fade" style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 16 }}>
                 <WcagBadge info={WCAG_INFO.video_alt} />
 
-                <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px", position: "relative" }}>
-                  <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Video Alt Text</p>
-                  <p style={{ fontSize: 15, color: "#1C1915", lineHeight: 1.55, fontWeight: 600, paddingRight: 52 }}>{highlightText(result.video_alt_text, kw, bf)}</p>
-                  <button className="cl-copy" onClick={() => handleCopy(result.video_alt_text, "vid-alt")}
-                    style={{ position: "absolute", top: 14, right: 14, padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === "vid-alt" ? "#1E7A48" : "#9A9590" }}>
-                    {copied === "vid-alt" ? "✓" : "Copy"}
-                  </button>
-                </div>
+                {result.object_count_check && (
+                  <Pill type="flag">🔍 {result.object_count_check}</Pill>
+                )}
+
+                {variants.length > 1 && (
+                  <div style={{ display: "flex", gap: 5 }}>
+                    {variants.map((vv, i) => (
+                      <button key={i} className={`cl-vtab ${selectedAltVariant === i ? "sel" : ""}`} onClick={() => setSelectedAltVariant(i)}
+                        style={{ flex: 1, padding: "9px 6px", background: "#E8E4DC", color: "#7A7570", border: "none", borderRadius: 6, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.04em" }}>
+                        {vv.focus_label || `Variant ${i + 1}`}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {v && (
+                  <>
+                    <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px", position: "relative" }}>
+                      <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Video Alt Text</p>
+                      <p style={{ fontSize: 15, color: "#1C1915", lineHeight: 1.55, fontWeight: 600, paddingRight: 52 }}>{highlightText(v.video_alt_text, kw, bf)}</p>
+                      <button className="cl-copy" onClick={() => handleCopy(v.video_alt_text, "vid-alt")}
+                        style={{ position: "absolute", top: 14, right: 14, padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === "vid-alt" ? "#1E7A48" : "#9A9590" }}>
+                        {copied === "vid-alt" ? "✓" : "Copy"}
+                      </button>
+                    </div>
+
+                    {v.rationale && (
+                      <div style={{ padding: "12px 13px", background: "#F7F5F0", border: "1px solid #DDD9D0", borderRadius: 8 }}>
+                        <p style={{ fontSize: 12, color: "#6B665F", lineHeight: 1.55, margin: 0 }}>{v.rationale}</p>
+                      </div>
+                    )}
+                  </>
+                )}
 
                 <WcagBadge info={WCAG_INFO.video_captions} />
 
