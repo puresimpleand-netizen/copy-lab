@@ -253,13 +253,17 @@ function highlightText(text, keywordTerms = [], benefitTerms = []) {
 }
 
 // Shared block appended to every alt-text prompt so the model returns SEO keywords
-// and highlighted benefits as part of the same response.
+// and highlighted benefits as part of the same response, instead of requiring
+// the user to supply them up front.
 // SEO keywords now report an estimated search-volume tier instead of an
 // abstract 0-100 "relevance score" — a fabricated precise number reads as
 // real data when it isn't; a qualitative tier is honest about being an
 // estimate. Benefits are grounded in actual PDP copy when the user supplies
-function buildSeoBenefitsInstruction() {
-  const benefitsRule = `- "benefits_highlighted": any functional benefits or purposes this media conveys (per WCAG guidance to describe function over pure appearance) — short phrases, only ones genuinely supported by what is shown/described, empty array if none apply.`;
+// it, rather than left to the model's own guess at what's beneficial.
+function buildSeoBenefitsInstruction(pdpCopy) {
+  const benefitsRule = pdpCopy && pdpCopy.trim()
+    ? `- "benefits_highlighted": benefits that are BOTH stated in the PDP copy below AND genuinely visible/true in the image — pull the phrasing from the PDP copy itself rather than inventing new wording. PDP copy:\n"""\n${pdpCopy.trim()}\n"""`
+    : `- "benefits_highlighted": any functional benefits or purposes this media conveys (per WCAG guidance to describe function over pure appearance) — short phrases, only ones genuinely true to the content, empty array if none apply.`;
   return `
 Also, without being asked for specific terms, use your own judgment to identify:
 - "seo_keywords": 3-6 realistic SEO keywords/phrases this content is well-suited to rank for or that a shopper would plausibly search for related to it — grounded in what's actually shown/described, not invented. For each, estimate its relative search volume as "search_volume": "High", "Medium", or "Low" (a qualitative estimate, not a fabricated precise number), plus a "note" of 1 short phrase on why.
@@ -275,8 +279,10 @@ const SEO_BENEFITS_SCHEMA = `"seo_keywords":[{"keyword":"","search_volume":"High
 // (verbose alt text, and filler phrases like "image of") as always-on rules
 // rather than selectable image types, since they're things to avoid, not
 // categories to generate for.
-function buildPrecisionInstruction() {
-  const colorRule = `Identify visible colors accurately. Do not invent official product color names.`;
+function buildPrecisionInstruction(colorNames) {
+  const colorRule = colorNames && colorNames.trim()
+    ? `Official color names for this product (from the product page): ${colorNames.trim()}. Match each visually distinct unit to the correct name from this list based on what's actually shown — use these exact names instead of a generic guess like "dark blue."`
+    : `Describe colors as accurately as you can from what's visible.`;
   return `
 Before writing, carefully count every distinct object, device, or person visible — look closely for subtle differences (e.g. two similar-looking colors on the same device model are likely different colorways, not the same unit) and treat each visually distinct unit as its own item, even when the difference is subtle. Do this silently as part of writing accurately — you don't need to report the count separately.
 ${colorRule}
@@ -330,6 +336,9 @@ export default function CopyLab() {
   const [altImageDescription, setAltImageDescription] = useState(""); // fallback when image can't be uploaded (confidential)
   const [altContext, setAltContext] = useState("");
   const [altYoutubeUrl, setAltYoutubeUrl] = useState("");
+  const [altImageType, setAltImageType] = useState("A01");
+  const [altColorNames, setAltColorNames] = useState("");
+  const [altPdpCopy, setAltPdpCopy] = useState("");
   const [selectedAltVariant, setSelectedAltVariant] = useState(0);
 
   const handleCopy = (text, id) => {
@@ -363,8 +372,10 @@ export default function CopyLab() {
     const hasVideoInput = altMode === "video" && altYoutubeUrl.trim();
     if (!hasImageInput && !hasVideoInput) return;
     setLoading(true); setError(null); setResult(null); setSelectedAltVariant(0);
-    const precisionInstruction = buildPrecisionInstruction();
-    const seoBenefitsInstruction = buildSeoBenefitsInstruction();
+
+    const typeInfo = SAMSUNG_IMAGE_TYPES.find(t => t.value === altImageType) || SAMSUNG_IMAGE_TYPES[0];
+    const precisionInstruction = buildPrecisionInstruction(altColorNames);
+    const seoBenefitsInstruction = buildSeoBenefitsInstruction(altPdpCopy);
 
     try {
       let parsed, sourceMode;
@@ -372,11 +383,26 @@ export default function CopyLab() {
       if (altMode === "image") {
         sourceMode = altImageBase64 ? "upload" : "description";
 
-        const typeInstruction = `Classify this image using Samsung's image-type taxonomy below. Return the best matching type as image_type with its code and name. Do not ask the user to choose the type. Also return official_color_names only when an exact official product color name is supported by the provided context or reliably known; otherwise return an empty array. Generate PDP copy with eyebrow, headline, and body based only on supported product/image information; do not invent specs, features, or claims.
-${SAMSUNG_IMAGE_TYPES.map(t => `${t.value}: ${t.label} — ${t.guidance}`).join("\n")}
-If the image type is Decorative Image, Background Image, or Not Intended for the User, return empty alt text as required by the taxonomy. Otherwise follow the type-specific guidance.
-${IMAGE_VARIANTS_INSTRUCTION}`;
-        const schema = `{"image_type":{"code":"A01","name":"Key Visual"},"official_color_names":["visible color or colorway names, using exact names only when supported by the image/description"],"pdp_copy":{"eyebrow":"short sentence-case eyebrow","headline":"concise sentence-case PDP headline","body":"concise factual PDP body copy"},"alt_text_variants":[{"focus_label":"Product-focused","alt_text":"concise WCAG-appropriate alt text, ideally under 125 characters","long_description":"a fuller description for complex images — empty string if alt_text alone covers it"},{"focus_label":"Detail-focused","alt_text":"","long_description":""}],"notes":"any accessibility considerations",${SEO_BENEFITS_SCHEMA}}`;
+        if (typeInfo.kind === "null") {
+          // Decorative / background / non-user-facing images have one correct,
+          // factual answer per WCAG (empty alt text) — no need to call the
+          // model at all for this, and it avoids the model second-guessing a
+          // rule that isn't actually a judgment call.
+          parsed = {
+            alt_text_variants: [{
+              focus_label: typeInfo.label,
+              alt_text: "",
+              long_description: "",
+            }],
+            notes: typeInfo.guidance,
+            seo_keywords: [],
+            benefits_highlighted: [],
+          };
+        } else {
+          const typeInstruction = typeInfo.kind === "variant" ? IMAGE_VARIANTS_INSTRUCTION : buildSingleTypeInstruction(typeInfo);
+          const schema = typeInfo.kind === "variant"
+            ? `{"alt_text_variants":[{"focus_label":"Product-focused","alt_text":"concise WCAG-appropriate alt text, ideally under 125 characters","long_description":"a fuller description for complex images — empty string if alt_text alone covers it"},{"focus_label":"Detail-focused","alt_text":"","long_description":""}],"notes":"any accessibility considerations, e.g. text baked into the image that should also appear as real text nearby",${SEO_BENEFITS_SCHEMA}}`
+            : `{"alt_text_variants":[{"focus_label":"${typeInfo.label}","alt_text":"","long_description":""}],"notes":"any accessibility considerations",${SEO_BENEFITS_SCHEMA}}`;
 
           if (altImageBase64) {
             const prompt = `Write accessibility alt text for this image.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}
@@ -500,7 +526,14 @@ ${JSON_VALIDITY_INSTRUCTION}`;
 
               {altMode === "image" ? (
                 <>
-<Field label="Upload Image:" hint="Preferred when possible — the model looks directly at the image to write accurate alt text.">
+                  <Field label="Image Type:" hint="Samsung's accessibility image-type taxonomy — each type has a different correct alt-text treatment (e.g. decorative images get empty alt text, logos just get the brand name, links describe their destination).">
+                    <select className="cl-input" value={altImageType} onChange={e => setAltImageType(e.target.value)}
+                      style={{ ...inputBase, cursor: "pointer" }}>
+                      {SAMSUNG_IMAGE_TYPES.map(t => <option key={t.value} value={t.value}>{t.value} — {t.label}</option>)}
+                    </select>
+                  </Field>
+
+                  <Field label="Upload Image:" hint="Preferred when possible — the model looks directly at the image to write accurate alt text.">
                     {altImagePreview ? (
                       <div style={{ position: "relative", display: "inline-block" }}>
                         <img src={altImagePreview} alt="Upload preview" style={{ maxWidth: "100%", maxHeight: 220, borderRadius: 8, border: "1.5px solid #E0DBD2", display: "block" }} />
@@ -520,6 +553,18 @@ ${JSON_VALIDITY_INSTRUCTION}`;
                       disabled={!!altImagePreview}
                       placeholder="e.g. Product shot of a phone on a marble surface, screen showing the home grid, soft studio lighting from the left."
                       style={{ ...inputBase, resize: "none", opacity: altImagePreview ? 0.5 : 1 }} />
+                  </Field>
+
+                  <Field label="Official Color Names:" hint="Optional — paste the exact color names from the product page. The generator will match each unit shown to these names instead of guessing generic colors like 'dark blue.'">
+                    <input className="cl-input" value={altColorNames} onChange={e => setAltColorNames(e.target.value)}
+                      placeholder="e.g. Awesome Blue, Awesome Lilac, Awesome Navy, Awesome White"
+                      style={inputBase} />
+                  </Field>
+
+                  <Field label="PDP Copy:" hint="Optional — paste the actual product description/benefits copy from the PDP. 'Benefits Highlighted' will be pulled from this text (matched against what's visible in the image) instead of a generic guess.">
+                    <textarea className="cl-input" value={altPdpCopy} onChange={e => setAltPdpCopy(e.target.value)} rows={4}
+                      placeholder="Paste the PDP product description/benefits copy here"
+                      style={{ ...inputBase, resize: "none" }} />
                   </Field>
                 </>
               ) : (
@@ -577,14 +622,6 @@ ${JSON_VALIDITY_INSTRUCTION}`;
               const v = variants[selectedAltVariant] || variants[0];
               return (
               <div className="cl-fade" style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 16 }}>
-                 <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px" }}>
-                 <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 12 }}>PDP Details</p>
-                 {result.image_type && <p style={{ fontSize: 13, marginBottom: 8 }}><strong>Image type:</strong> {result.image_type.code} — {result.image_type.name}</p>}
-                 {result.official_color_names?.length > 0 && <p style={{ fontSize: 13, marginBottom: 8 }}><strong>Official color names:</strong> {result.official_color_names.join(", ")}</p>}
-                 {result.pdp_copy && <div style={{ fontSize: 13, lineHeight: 1.6 }}><strong>PDP copy:</strong><div style={{ marginTop: 5 }}><strong>Eyebrow:</strong> {result.pdp_copy.eyebrow}</div><div><strong>Headline:</strong> {result.pdp_copy.headline}</div><div><strong>Body:</strong> {result.pdp_copy.body}</div></div>}
-               </div>
-
-               
                 {altImagePreview && result.sourceMode === "upload" && (
                   <img src={altImagePreview} alt="Analyzed" style={{ maxWidth: "100%", maxHeight: 260, borderRadius: 10, border: "1.5px solid #E0DBD2" }} />
                 )}
@@ -667,14 +704,6 @@ ${JSON_VALIDITY_INSTRUCTION}`;
               const v = variants[selectedAltVariant] || variants[0];
               return (
               <div className="cl-fade" style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 16 }}>
-                 <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px" }}>
-                 <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 12 }}>PDP Details</p>
-                 {result.image_type && <p style={{ fontSize: 13, marginBottom: 8 }}><strong>Image type:</strong> {result.image_type.code} — {result.image_type.name}</p>}
-                 {result.official_color_names?.length > 0 && <p style={{ fontSize: 13, marginBottom: 8 }}><strong>Official color names:</strong> {result.official_color_names.join(", ")}</p>}
-                 {result.pdp_copy && <div style={{ fontSize: 13, lineHeight: 1.6 }}><strong>PDP copy:</strong><div style={{ marginTop: 5 }}><strong>Eyebrow:</strong> {result.pdp_copy.eyebrow}</div><div><strong>Headline:</strong> {result.pdp_copy.headline}</div><div><strong>Body:</strong> {result.pdp_copy.body}</div></div>}
-               </div>
-
-               
                 {variants.length > 1 && (
                   <div style={{ display: "flex", gap: 5 }}>
                     {variants.map((vv, i) => (
@@ -757,7 +786,7 @@ ${JSON_VALIDITY_INSTRUCTION}`;
                   <path d="M7 9h10M7 12.5h7M7 16h4" stroke="#B0ABA4" strokeWidth="1.5" strokeLinecap="round" />
                 </svg>
                 <p style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, fontSize: 15, color: "#1C1915", margin: 0 }}>Your results will show up here</p>
-                <p style={{ fontSize: 13, color: "#9A9590", lineHeight: 1.6, margin: 0 }}>Fill in the form above, then run it — this space fills in with your generated alt text, image type, color names, PDP copy, SEO keywords, and highlighted benefits.</p>
+                <p style={{ fontSize: 13, color: "#9A9590", lineHeight: 1.6, margin: 0 }}>Fill in the form above, then run it — this space fills in with your generated alt text, suggested SEO keywords, and highlighted benefits.</p>
               </div>
             )}
 
