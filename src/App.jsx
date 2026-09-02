@@ -20,6 +20,30 @@ const WCAG_INFO = {
   },
 };
 
+// Samsung's internal image-type taxonomy for accessibility. Each type has a
+// different correct alt-text treatment — a decorative lifestyle image should
+// get empty alt text, a logo should just be the brand name, a link image
+// should describe the destination rather than the picture, etc. "variant"
+// types are the ones where a legitimate product-vs-content framing choice
+// exists (so 2 variants are generated); "single" types have one correct
+// shape of answer; "null" types should get empty/null alt text per WCAG,
+// which is applied directly without a model call.
+const SAMSUNG_IMAGE_TYPES = [
+  { value: "A01", label: "Key Visual", kind: "variant", guidance: "Key visual image at the top of the product detail page — the primary hero visual. Alt text should focus on the product itself as the main subject." },
+  { value: "A02", label: "Gallery Image", kind: "variant", guidance: "Product image within the PDP image gallery. Alt text should describe this specific image (the angle, color, or view it shows) so it's distinguishable from the other gallery images of the same product." },
+  { value: "A11", label: "Product Image", kind: "variant", guidance: "Product image placed alongside product description copy. Alt text should describe the product itself without repeating information already stated in the adjacent text." },
+  { value: "A03", label: "Banner Image", kind: "single", guidance: "Banner image enhancing a theme or subject. Alt text should convey the banner's message/theme concisely, not decorative visual details." },
+  { value: "A04", label: "Logo Image", kind: "single", guidance: "Another company's logo used in the content. Alt text should simply state the company/brand name (e.g. \"Google logo\") — nothing more, no visual description of the mark itself." },
+  { value: "A05", label: "Graphical Representation", kind: "single", guidance: "Chart, diagram, graph, map, or illustration conveying information about Samsung or a product. Alt text should summarize the key data point or insight; use the long description to break down the information itself, not just describe its visual appearance." },
+  { value: "A06", label: "Webcam Image", kind: "single", guidance: "Static webcam image that updates automatically/periodically. Alt text should describe generically what the view shows (e.g. a live view of a location), since specific real-time detail can't be verified at the time this is written." },
+  { value: "A07", label: "Animated GIF", kind: "single", guidance: "Animated gif used to efficiently explain something. Alt text should concisely summarize what the animation demonstrates in one pass, not narrate it frame by frame." },
+  { value: "A08", label: "Link Image", kind: "single", guidance: "This image is wrapped in a link. Alt text MUST describe the link's destination or purpose (where it goes / what happens when activated) rather than the visual appearance of the image. If Context states the destination, use that directly; otherwise infer the likely destination/action from what's shown." },
+  { value: "A13", label: "Icon Image", kind: "single", guidance: "Icon representing the meaning of adjacent text. Alt text should describe the meaning/function the icon conveys (matching the adjacent text's intent), not its visual appearance — e.g. \"Search,\" not \"magnifying glass icon.\"" },
+  { value: "A12", label: "Decorative Image", kind: "null", guidance: "Lifestyle image used for decorative purposes. Per WCAG, decorative images that add no informational value beyond surrounding content should have empty/null alt text (alt=\"\")." },
+  { value: "A14", label: "Background Image", kind: "null", guidance: "Background image used for decorative purposes (should be applied via CSS, not an <img> tag). Per WCAG, alt text should be empty/null (alt=\"\")." },
+  { value: "A15", label: "Not Intended for the User", kind: "null", guidance: "Image used for a non-visual/functional purpose (e.g. a page-view tracking pixel), not meant to convey content to users. Per WCAG, alt text should be empty/null (alt=\"\")." },
+];
+
 async function fetchTrendingKeywords(keyword) {
   if (!keyword || !keyword.trim()) return null;
   try {
@@ -138,6 +162,24 @@ function ScoreBar({ label, score, note }) {
   );
 }
 
+// Search volume is a qualitative tier (High/Medium/Low) rather than a
+// fabricated precise number, since this tool doesn't have a real search
+// volume API — presenting a made-up number as if it were data would be
+// misleading.
+function VolumeRow({ keyword, volume, note }) {
+  const colors = { High: "#1E7A48", Medium: "#C07820", Low: "#8A8580" };
+  const color = colors[volume] || "#8A8580";
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, padding: "10px 0", borderBottom: "1px solid #EEEAE2" }}>
+      <div>
+        <p style={{ fontSize: 13, fontWeight: 600, color: "#1C1915", fontFamily: "'DM Sans', sans-serif", margin: 0 }}>{keyword}</p>
+        {note && <p style={{ fontSize: 12, color: "#8A8580", lineHeight: 1.5, margin: "3px 0 0" }}>{note}</p>}
+      </div>
+      <span style={{ flexShrink: 0, fontFamily: "'DM Mono', monospace", fontSize: 10.5, fontWeight: 600, color, background: color + "15", border: `1px solid ${color}30`, borderRadius: 4, padding: "3px 8px", letterSpacing: "0.03em", textTransform: "uppercase" }}>{volume || "—"} vol.</span>
+    </div>
+  );
+}
+
 function TrendingKeywordsPanel({ keyword, data }) {
   if (!keyword?.trim()) return null;
   const trendsUrl = `https://trends.google.com/explore?geo=US&hl=en-US&q=${encodeURIComponent(keyword.trim())}`;
@@ -213,20 +255,49 @@ function highlightText(text, keywordTerms = [], benefitTerms = []) {
 // Shared block appended to every alt-text prompt so the model returns SEO keywords
 // and highlighted benefits as part of the same response, instead of requiring
 // the user to supply them up front.
-const SEO_BENEFITS_INSTRUCTION = `
+// SEO keywords now report an estimated search-volume tier instead of an
+// abstract 0-100 "relevance score" — a fabricated precise number reads as
+// real data when it isn't; a qualitative tier is honest about being an
+// estimate. Benefits are grounded in actual PDP copy when the user supplies
+// it, rather than left to the model's own guess at what's beneficial.
+function buildSeoBenefitsInstruction(pdpCopy) {
+  const benefitsRule = pdpCopy && pdpCopy.trim()
+    ? `- "benefits_highlighted": benefits that are BOTH stated in the PDP copy below AND genuinely visible/true in the image — pull the phrasing from the PDP copy itself rather than inventing new wording. PDP copy:\n"""\n${pdpCopy.trim()}\n"""`
+    : `- "benefits_highlighted": any functional benefits or purposes this media conveys (per WCAG guidance to describe function over pure appearance) — short phrases, only ones genuinely true to the content, empty array if none apply.`;
+  return `
 Also, without being asked for specific terms, use your own judgment to identify:
-- "seo_keywords": 3-6 realistic SEO keywords/phrases this content is well-suited to rank for or that a shopper would plausibly search for related to it — grounded in what's actually shown/described, not invented. For each, score its relevance/searchability 0-100 as {"keyword":"","score":0,"note":"1 short phrase on why"}.
-- "benefits_highlighted": any functional benefits or purposes this media conveys (per WCAG guidance to describe function over pure appearance) — short phrases, only ones that are genuinely true to the content, empty array if none apply.`;
+- "seo_keywords": 3-6 realistic SEO keywords/phrases this content is well-suited to rank for or that a shopper would plausibly search for related to it — grounded in what's actually shown/described, not invented. For each, estimate its relative search volume as "search_volume": "High", "Medium", or "Low" (a qualitative estimate, not a fabricated precise number), plus a "note" of 1 short phrase on why.
+${benefitsRule}`;
+}
 
-const SEO_BENEFITS_SCHEMA = `"seo_keywords":[{"keyword":"","score":0,"note":""}],"benefits_highlighted":[]`;
+const SEO_BENEFITS_SCHEMA = `"seo_keywords":[{"keyword":"","search_volume":"High","note":""}],"benefits_highlighted":[]`;
 
 // Precision guidance driven by internal review feedback: the generator was
 // merging visually-similar-but-distinct items (e.g. two similar phone colors
 // counted as one device) and using vague/decorative language instead of exact
-// feature or color names.
-const PRECISION_INSTRUCTION = `
-Before writing, carefully count every distinct object, device, or person visible — look closely for subtle differences (e.g. two similar-looking colors on the same device model are likely different colorways, not the same unit) and treat each visually distinct unit as its own item, even when the difference is subtle. State what you counted, and flag any calls you're not fully certain of (e.g. two similar light colors that are hard to tell apart at this resolution), as "object_count_check" (1-2 sentences).
-Use precise, correct feature/function/color names rather than vague or invented ones. Avoid unnecessary decorative or subjective language (e.g. "stunning," "sleek") that doesn't serve accessibility — keep descriptions functional and accurate, and leave out details that aren't useful for someone who can't see the media.`;
+// feature or color names. Also folds in Samsung's A09/A10 anti-patterns
+// (verbose alt text, and filler phrases like "image of") as always-on rules
+// rather than selectable image types, since they're things to avoid, not
+// categories to generate for.
+function buildPrecisionInstruction(colorNames) {
+  const colorRule = colorNames && colorNames.trim()
+    ? `Official color names for this product (from the product page): ${colorNames.trim()}. Match each visually distinct unit to the correct name from this list based on what's actually shown — use these exact names instead of a generic guess like "dark blue."`
+    : `Describe colors as accurately as you can from what's visible.`;
+  return `
+Before writing, carefully count every distinct object, device, or person visible — look closely for subtle differences (e.g. two similar-looking colors on the same device model are likely different colorways, not the same unit) and treat each visually distinct unit as its own item, even when the difference is subtle. Do this silently as part of writing accurately — you don't need to report the count separately.
+${colorRule}
+Use precise, correct feature/function names rather than vague or invented ones. Avoid unnecessary decorative or subjective language (e.g. "stunning," "sleek") that doesn't serve accessibility — keep descriptions functional and accurate, and leave out details that aren't useful for someone who can't see the media.
+Per Samsung accessibility guidelines, always avoid: verbose alt text that over-explains or narrates rather than staying concise (this applies especially to images describing a mobile device's function); and filler phrases like "image of," "picture of," or "graphic of" — screen readers already announce that an image is present, so naming it again is redundant.`;
+}
+
+// Builds the type-specific instruction for the single "kind: single" Samsung
+// image types (banner, logo, chart, webcam, gif, link, icon) — one correct
+// answer per that type's rule, not a product-vs-detail framing choice.
+function buildSingleTypeInstruction(typeInfo) {
+  return `
+This is a ${typeInfo.label} (Samsung image type ${typeInfo.value}). ${typeInfo.guidance}
+Write exactly 1 alt text entry in "alt_text_variants" tailored to this rule, with "focus_label":"${typeInfo.label}".`;
+}
 
 // Internal review also found the tool's single output swung unpredictably
 // between describing the product itself and describing on-screen content,
@@ -236,14 +307,12 @@ Use precise, correct feature/function/color names rather than vague or invented 
 const IMAGE_VARIANTS_INSTRUCTION = `
 Write 2 alt text variants with deliberately different framing, since the right focus depends on where this image will be used:
 1. "Product-focused": emphasizes the product itself — angle, form factor, color(s), and how many units are shown. Best when the product is the actual subject, e.g. a hero/PDP image.
-2. "Detail-focused": emphasizes what's displayed on-screen or shown in more granular detail (UI, wallpaper, on-screen content). Best when that on-screen content is itself the subject, e.g. a feature screenshot.
-For each variant, give a 1-sentence "rationale" on the situation where that framing is the better fit.`;
+2. "Detail-focused": emphasizes what's displayed on-screen or shown in more granular detail (UI, wallpaper, on-screen content). Best when that on-screen content is itself the subject, e.g. a feature screenshot.`;
 
 const VIDEO_VARIANTS_INSTRUCTION = `
 Write 2 video alt text variants with deliberately different framing:
 1. "Product-focused": emphasizes the product/action itself.
-2. "Content-focused": emphasizes on-screen UI/content shown during the video.
-For each variant, give a 1-sentence "rationale" on the situation where that framing is the better fit.`;
+2. "Content-focused": emphasizes on-screen UI/content shown during the video.`;
 
 
 // Appended to every prompt that expects raw JSON back. Long free-text fields
@@ -267,6 +336,9 @@ export default function CopyLab() {
   const [altImageDescription, setAltImageDescription] = useState(""); // fallback when image can't be uploaded (confidential)
   const [altContext, setAltContext] = useState("");
   const [altYoutubeUrl, setAltYoutubeUrl] = useState("");
+  const [altImageType, setAltImageType] = useState("A01");
+  const [altColorNames, setAltColorNames] = useState("");
+  const [altPdpCopy, setAltPdpCopy] = useState("");
   const [selectedAltVariant, setSelectedAltVariant] = useState(0);
 
   const handleCopy = (text, id) => {
@@ -301,46 +373,72 @@ export default function CopyLab() {
     if (!hasImageInput && !hasVideoInput) return;
     setLoading(true); setError(null); setResult(null); setSelectedAltVariant(0);
 
+    const typeInfo = SAMSUNG_IMAGE_TYPES.find(t => t.value === altImageType) || SAMSUNG_IMAGE_TYPES[0];
+    const precisionInstruction = buildPrecisionInstruction(altColorNames);
+    const seoBenefitsInstruction = buildSeoBenefitsInstruction(altPdpCopy);
+
     try {
       let parsed, sourceMode;
 
       if (altMode === "image") {
-        if (altImageBase64) {
-          const prompt = `Write accessibility alt text for this image.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}
-${PRECISION_INSTRUCTION}
-${IMAGE_VARIANTS_INSTRUCTION}
-${SEO_BENEFITS_INSTRUCTION}
-Return ONLY valid JSON, no markdown, no preamble:
-{"alt_text_variants":[{"focus_label":"Product-focused","alt_text":"concise WCAG-appropriate alt text, ideally under 125 characters","long_description":"a fuller description for complex images — empty string if alt_text alone covers it","rationale":""},{"focus_label":"Detail-focused","alt_text":"","long_description":"","rationale":""}],"notes":"any accessibility considerations, e.g. text baked into the image that should also appear as real text nearby","object_count_check":"",${SEO_BENEFITS_SCHEMA}}
-${JSON_VALIDITY_INSTRUCTION}`;
-          const res = await fetch("/api/analyze-media", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ mode: "image", prompt, imageBase64: altImageBase64, imageMimeType: altImageMimeType, maxTokens: 2200 }),
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data?.error || "Request failed.");
-          parsed = parseModelJson(data.text);
-          sourceMode = "upload";
+        sourceMode = altImageBase64 ? "upload" : "description";
+
+        if (typeInfo.kind === "null") {
+          // Decorative / background / non-user-facing images have one correct,
+          // factual answer per WCAG (empty alt text) — no need to call the
+          // model at all for this, and it avoids the model second-guessing a
+          // rule that isn't actually a judgment call.
+          parsed = {
+            alt_text_variants: [{
+              focus_label: typeInfo.label,
+              alt_text: "",
+              long_description: "",
+            }],
+            notes: typeInfo.guidance,
+            seo_keywords: [],
+            benefits_highlighted: [],
+          };
         } else {
-          const sys = `You are an accessibility specialist writing image alt text from a text description (the actual image is confidential and can't be uploaded). ${SENTENCE_CASE_RULE} Return ONLY valid JSON. No markdown, no preamble.`;
-          const usr = `Write accessibility alt text for an image described as: "${altImageDescription.trim()}"${altContext.trim() ? `\nContext: ${altContext.trim()}` : ""}
-${PRECISION_INSTRUCTION}
-${IMAGE_VARIANTS_INSTRUCTION}
-${SEO_BENEFITS_INSTRUCTION}
-Return:
-{"alt_text_variants":[{"focus_label":"Product-focused","alt_text":"concise WCAG-appropriate alt text under 125 characters","long_description":"a fuller description if the image sounds complex — empty string otherwise","rationale":""},{"focus_label":"Detail-focused","alt_text":"","long_description":"","rationale":""}],"notes":"any accessibility considerations","object_count_check":"",${SEO_BENEFITS_SCHEMA}}
+          const typeInstruction = typeInfo.kind === "variant" ? IMAGE_VARIANTS_INSTRUCTION : buildSingleTypeInstruction(typeInfo);
+          const schema = typeInfo.kind === "variant"
+            ? `{"alt_text_variants":[{"focus_label":"Product-focused","alt_text":"concise WCAG-appropriate alt text, ideally under 125 characters","long_description":"a fuller description for complex images — empty string if alt_text alone covers it"},{"focus_label":"Detail-focused","alt_text":"","long_description":""}],"notes":"any accessibility considerations, e.g. text baked into the image that should also appear as real text nearby",${SEO_BENEFITS_SCHEMA}}`
+            : `{"alt_text_variants":[{"focus_label":"${typeInfo.label}","alt_text":"","long_description":""}],"notes":"any accessibility considerations",${SEO_BENEFITS_SCHEMA}}`;
+
+          if (altImageBase64) {
+            const prompt = `Write accessibility alt text for this image.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}
+${typeInstruction}
+${precisionInstruction}
+${seoBenefitsInstruction}
+Return ONLY valid JSON, no markdown, no preamble:
+${schema}
 ${JSON_VALIDITY_INSTRUCTION}`;
-          parsed = await callClaude(sys, usr, 2200);
-          sourceMode = "description";
+            const res = await fetch("/api/analyze-media", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ mode: "image", prompt, imageBase64: altImageBase64, imageMimeType: altImageMimeType, maxTokens: 2200 }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || "Request failed.");
+            parsed = parseModelJson(data.text);
+          } else {
+            const sys = `You are an accessibility specialist writing image alt text from a text description (the actual image is confidential and can't be uploaded). ${SENTENCE_CASE_RULE} Return ONLY valid JSON. No markdown, no preamble.`;
+            const usr = `Write accessibility alt text for an image described as: "${altImageDescription.trim()}"${altContext.trim() ? `\nContext: ${altContext.trim()}` : ""}
+${typeInstruction}
+${precisionInstruction}
+${seoBenefitsInstruction}
+Return:
+${schema}
+${JSON_VALIDITY_INSTRUCTION}`;
+            parsed = await callClaude(sys, usr, 2200);
+          }
         }
       } else {
         const prompt = `Watch this video and provide accessibility information about it.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}
-${PRECISION_INSTRUCTION}
+${precisionInstruction}
 ${VIDEO_VARIANTS_INSTRUCTION}
-${SEO_BENEFITS_INSTRUCTION}
+${seoBenefitsInstruction}
 Return ONLY valid JSON, no markdown, no preamble:
-{"video_alt_text_variants":[{"focus_label":"Product-focused","video_alt_text":"a concise description of what this video shows/is about, for accessibility (like alt text, but for video)","rationale":""},{"focus_label":"Content-focused","video_alt_text":"","rationale":""}],"appears_captioned":true or false — true only if you can actually SEE burned-in/open captions in the video frames themselves; if you can't tell from the visuals, use false,"transcript_captions":"a full transcript of the spoken audio, formatted as readable caption text with natural line breaks — this is a draft caption track to use IF the video turns out to lack real closed captions on YouTube","notes":"1-2 sentences of any other accessibility notes, e.g. important on-screen text or visuals not covered by the audio","object_count_check":"",${SEO_BENEFITS_SCHEMA}}
+{"video_alt_text_variants":[{"focus_label":"Product-focused","video_alt_text":"a concise description of what this video shows/is about, for accessibility (like alt text, but for video)"},{"focus_label":"Content-focused","video_alt_text":""}],"appears_captioned":true or false — true only if you can actually SEE burned-in/open captions in the video frames themselves; if you can't tell from the visuals, use false,"transcript_captions":"a full transcript of the spoken audio, formatted as readable caption text with natural line breaks — this is a draft caption track to use IF the video turns out to lack real closed captions on YouTube","notes":"1-2 sentences of any other accessibility notes, e.g. important on-screen text or visuals not covered by the audio",${SEO_BENEFITS_SCHEMA}}
 ${JSON_VALIDITY_INSTRUCTION}`;
         const res = await fetch("/api/analyze-media", {
           method: "POST",
@@ -352,9 +450,10 @@ ${JSON_VALIDITY_INSTRUCTION}`;
         parsed = parseModelJson(data.text);
       }
 
-      // Now that we know which keyword the model itself surfaced as most relevant,
-      // use it to pull related Google Trends data.
-      const topKeyword = [...(parsed.seo_keywords || [])].sort((a, b) => (b.score || 0) - (a.score || 0))[0]?.keyword;
+      // Now that we know which keyword the model itself surfaced, use the
+      // highest-estimated-volume one to pull related Google Trends data.
+      const volumeRank = { High: 3, Medium: 2, Low: 1 };
+      const topKeyword = [...(parsed.seo_keywords || [])].sort((a, b) => (volumeRank[b.search_volume] || 0) - (volumeRank[a.search_volume] || 0))[0]?.keyword;
       const trendsKeyword = topKeyword || altContext.trim();
       const trends = await fetchTrendingKeywords(trendsKeyword);
 
@@ -427,6 +526,13 @@ ${JSON_VALIDITY_INSTRUCTION}`;
 
               {altMode === "image" ? (
                 <>
+                  <Field label="Image Type:" hint="Samsung's accessibility image-type taxonomy — each type has a different correct alt-text treatment (e.g. decorative images get empty alt text, logos just get the brand name, links describe their destination).">
+                    <select className="cl-input" value={altImageType} onChange={e => setAltImageType(e.target.value)}
+                      style={{ ...inputBase, cursor: "pointer" }}>
+                      {SAMSUNG_IMAGE_TYPES.map(t => <option key={t.value} value={t.value}>{t.value} — {t.label}</option>)}
+                    </select>
+                  </Field>
+
                   <Field label="Upload Image:" hint="Preferred when possible — the model looks directly at the image to write accurate alt text.">
                     {altImagePreview ? (
                       <div style={{ position: "relative", display: "inline-block" }}>
@@ -447,6 +553,18 @@ ${JSON_VALIDITY_INSTRUCTION}`;
                       disabled={!!altImagePreview}
                       placeholder="e.g. Product shot of a phone on a marble surface, screen showing the home grid, soft studio lighting from the left."
                       style={{ ...inputBase, resize: "none", opacity: altImagePreview ? 0.5 : 1 }} />
+                  </Field>
+
+                  <Field label="Official Color Names:" hint="Optional — paste the exact color names from the product page. The generator will match each unit shown to these names instead of guessing generic colors like 'dark blue.'">
+                    <input className="cl-input" value={altColorNames} onChange={e => setAltColorNames(e.target.value)}
+                      placeholder="e.g. Awesome Blue, Awesome Lilac, Awesome Navy, Awesome White"
+                      style={inputBase} />
+                  </Field>
+
+                  <Field label="PDP Copy:" hint="Optional — paste the actual product description/benefits copy from the PDP. 'Benefits Highlighted' will be pulled from this text (matched against what's visible in the image) instead of a generic guess.">
+                    <textarea className="cl-input" value={altPdpCopy} onChange={e => setAltPdpCopy(e.target.value)} rows={4}
+                      placeholder="Paste the PDP product description/benefits copy here"
+                      style={{ ...inputBase, resize: "none" }} />
                   </Field>
                 </>
               ) : (
@@ -498,19 +616,14 @@ ${JSON_VALIDITY_INSTRUCTION}`;
             {!loading && result?.type === "alttext-image" && (() => {
               const kw = (result.seo_keywords || []).map(k => k.keyword);
               const bf = result.benefits_highlighted || [];
-              const rankedKeywords = [...(result.seo_keywords || [])].sort((a, b) => (b.score || 0) - (a.score || 0));
+              const volumeRank = { High: 3, Medium: 2, Low: 1 };
+              const rankedKeywords = [...(result.seo_keywords || [])].sort((a, b) => (volumeRank[b.search_volume] || 0) - (volumeRank[a.search_volume] || 0));
               const variants = result.alt_text_variants || [];
               const v = variants[selectedAltVariant] || variants[0];
               return (
               <div className="cl-fade" style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 16 }}>
                 {altImagePreview && result.sourceMode === "upload" && (
                   <img src={altImagePreview} alt="Analyzed" style={{ maxWidth: "100%", maxHeight: 260, borderRadius: 10, border: "1.5px solid #E0DBD2" }} />
-                )}
-
-                <WcagBadge info={WCAG_INFO.image_alt} />
-
-                {result.object_count_check && (
-                  <Pill type="flag">🔍 {result.object_count_check}</Pill>
                 )}
 
                 {variants.length > 1 && (
@@ -528,18 +641,12 @@ ${JSON_VALIDITY_INSTRUCTION}`;
                   <>
                     <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px", position: "relative" }}>
                       <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Alt Text</p>
-                      <p style={{ fontSize: 15, color: "#1C1915", lineHeight: 1.55, fontWeight: 600, paddingRight: 52 }}>{highlightText(v.alt_text, kw, bf)}</p>
+                      <p style={{ fontSize: 15, color: "#1C1915", lineHeight: 1.55, fontWeight: 600, paddingRight: 52 }}>{v.alt_text ? highlightText(v.alt_text, kw, bf) : <span style={{ fontStyle: "italic", color: "#9A9590", fontWeight: 400 }}>(empty — no alt text needed)</span>}</p>
                       <button className="cl-copy" onClick={() => handleCopy(v.alt_text, "alt-main")}
                         style={{ position: "absolute", top: 14, right: 14, padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === "alt-main" ? "#1E7A48" : "#9A9590" }}>
                         {copied === "alt-main" ? "✓" : "Copy"}
                       </button>
                     </div>
-
-                    {v.rationale && (
-                      <div style={{ padding: "12px 13px", background: "#F7F5F0", border: "1px solid #DDD9D0", borderRadius: 8 }}>
-                        <p style={{ fontSize: 12, color: "#6B665F", lineHeight: 1.55, margin: 0 }}>{v.rationale}</p>
-                      </div>
-                    )}
 
                     {v.long_description && (
                       <div style={{ background: "#F7F5F0", border: "1px solid #DDD9D0", borderRadius: 8, padding: "14px 16px", position: "relative" }}>
@@ -567,8 +674,8 @@ ${JSON_VALIDITY_INSTRUCTION}`;
 
                 {rankedKeywords.length > 0 && (
                   <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px" }}>
-                    <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 14 }}>Suggested SEO Keywords</p>
-                    {rankedKeywords.map((k, i) => <ScoreBar key={i} label={k.keyword} score={k.score} note={k.note} />)}
+                    <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 4 }}>Suggested SEO Keywords</p>
+                    {rankedKeywords.map((k, i) => <VolumeRow key={i} keyword={k.keyword} volume={k.search_volume} note={k.note} />)}
                   </div>
                 )}
 
@@ -591,17 +698,12 @@ ${JSON_VALIDITY_INSTRUCTION}`;
             {!loading && result?.type === "alttext-video" && (() => {
               const kw = (result.seo_keywords || []).map(k => k.keyword);
               const bf = result.benefits_highlighted || [];
-              const rankedKeywords = [...(result.seo_keywords || [])].sort((a, b) => (b.score || 0) - (a.score || 0));
+              const volumeRank = { High: 3, Medium: 2, Low: 1 };
+              const rankedKeywords = [...(result.seo_keywords || [])].sort((a, b) => (volumeRank[b.search_volume] || 0) - (volumeRank[a.search_volume] || 0));
               const variants = result.video_alt_text_variants || [];
               const v = variants[selectedAltVariant] || variants[0];
               return (
               <div className="cl-fade" style={{ marginTop: 28, display: "flex", flexDirection: "column", gap: 16 }}>
-                <WcagBadge info={WCAG_INFO.video_alt} />
-
-                {result.object_count_check && (
-                  <Pill type="flag">🔍 {result.object_count_check}</Pill>
-                )}
-
                 {variants.length > 1 && (
                   <div style={{ display: "flex", gap: 5 }}>
                     {variants.map((vv, i) => (
@@ -614,25 +716,15 @@ ${JSON_VALIDITY_INSTRUCTION}`;
                 )}
 
                 {v && (
-                  <>
-                    <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px", position: "relative" }}>
-                      <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Video Alt Text</p>
-                      <p style={{ fontSize: 15, color: "#1C1915", lineHeight: 1.55, fontWeight: 600, paddingRight: 52 }}>{highlightText(v.video_alt_text, kw, bf)}</p>
-                      <button className="cl-copy" onClick={() => handleCopy(v.video_alt_text, "vid-alt")}
-                        style={{ position: "absolute", top: 14, right: 14, padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === "vid-alt" ? "#1E7A48" : "#9A9590" }}>
-                        {copied === "vid-alt" ? "✓" : "Copy"}
-                      </button>
-                    </div>
-
-                    {v.rationale && (
-                      <div style={{ padding: "12px 13px", background: "#F7F5F0", border: "1px solid #DDD9D0", borderRadius: 8 }}>
-                        <p style={{ fontSize: 12, color: "#6B665F", lineHeight: 1.55, margin: 0 }}>{v.rationale}</p>
-                      </div>
-                    )}
-                  </>
+                  <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px", position: "relative" }}>
+                    <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Video Alt Text</p>
+                    <p style={{ fontSize: 15, color: "#1C1915", lineHeight: 1.55, fontWeight: 600, paddingRight: 52 }}>{highlightText(v.video_alt_text, kw, bf)}</p>
+                    <button className="cl-copy" onClick={() => handleCopy(v.video_alt_text, "vid-alt")}
+                      style={{ position: "absolute", top: 14, right: 14, padding: "5px 10px", background: "#F2EFE9", border: "1px solid #DDD9D0", borderRadius: 4, cursor: "pointer", fontFamily: "'DM Mono', monospace", fontSize: 10, color: copied === "vid-alt" ? "#1E7A48" : "#9A9590" }}>
+                      {copied === "vid-alt" ? "✓" : "Copy"}
+                    </button>
+                  </div>
                 )}
-
-                <WcagBadge info={WCAG_INFO.video_captions} />
 
                 <div style={{ padding: "12px 14px", background: result.appears_captioned ? "#F0FBF5" : "#FFF8F0", border: `1px solid ${result.appears_captioned ? "#1E7A4830" : "#C0782030"}`, borderRadius: 8 }}>
                   <p style={{ fontSize: 12, color: result.appears_captioned ? "#1A5C38" : "#7A4E10", lineHeight: 1.55, margin: 0 }}>
@@ -666,8 +758,8 @@ ${JSON_VALIDITY_INSTRUCTION}`;
 
                 {rankedKeywords.length > 0 && (
                   <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px" }}>
-                    <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 14 }}>Suggested SEO Keywords</p>
-                    {rankedKeywords.map((k, i) => <ScoreBar key={i} label={k.keyword} score={k.score} note={k.note} />)}
+                    <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 4 }}>Suggested SEO Keywords</p>
+                    {rankedKeywords.map((k, i) => <VolumeRow key={i} keyword={k.keyword} volume={k.search_volume} note={k.note} />)}
                   </div>
                 )}
 
