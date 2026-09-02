@@ -5,7 +5,6 @@ const SENTENCE_CASE_RULE = "Grammar rule: use sentence case for all copy — cap
 const API_URL = "/api/generate";
 const TRENDS_API_URL = "/api/trends";
 
-// Definition for labelStyle added to prevent reference errors
 const labelStyle = {
   fontSize: "14px",
   fontWeight: 600,
@@ -15,7 +14,6 @@ const labelStyle = {
   marginBottom: "6px"
 };
 
-// Updated to match official WCAG 2.2 standards
 const WCAG_INFO = {
   image_alt: {
     criterion: "WCAG 2.2 — SC 1.1.1 Non-text Content (Level A)",
@@ -168,6 +166,33 @@ function TrendingKeywordsPanel({ keyword, data }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Added root application wrapper component to expose a default export to Vite
+export default function App() {
+  const [keyword, setKeyword] = useState("accessibility");
+  
+  return (
+    <div style={{ padding: "40px", maxWidth: "600px", margin: "0 auto", fontFamily: "'DM Sans', sans-serif" }}>
+      <WcagBadge info={WCAG_INFO.image_alt} />
+      <div style={{ margin: "24px 0" }}>
+        <Field 
+          label="Context framework key" 
+          hint="Provide an anchor subject to query structural tags."
+          required
+        >
+          <input 
+            type="text" 
+            value={keyword}
+            onChange={(e) => setKeyword(e.target.value)}
+            style={{ width: "100%", padding: "10px", borderRadius: "6px", border: "1px solid #DDD9D0" }} 
+          />
+        </Field>
+      </div>
+      <ScoreBar label="Compliance score" score={95} note="Meets all requirements for descriptive context labels." />
+      <TrendingKeywordsPanel keyword={keyword} data={{ rising: [{ query: "wcag 2.2 checklist", value: "+120%" }] }} />
     </div>
   );
 }
