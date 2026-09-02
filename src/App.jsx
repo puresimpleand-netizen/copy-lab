@@ -5,6 +5,16 @@ const SENTENCE_CASE_RULE = "Grammar rule: use sentence case for all copy — cap
 const API_URL = "/api/generate";
 const TRENDS_API_URL = "/api/trends";
 
+// Definition for labelStyle added to prevent reference errors
+const labelStyle = {
+  fontSize: "14px",
+  fontWeight: 600,
+  color: "#1C1915",
+  fontFamily: "'DM Sans', sans-serif",
+  display: "block",
+  marginBottom: "6px"
+};
+
 // Updated to match official WCAG 2.2 standards
 const WCAG_INFO = {
   image_alt: {
@@ -80,7 +90,6 @@ function Field({ label, hint, required, children }) {
   return (
     <div className="cl-field" style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
       <div style={{ flex: "1 1 0", minWidth: 0 }}>
-        {/* Style placeholder labelStyle assumed to be defined elsewhere in your file */}
         <label style={labelStyle}>{label} {required && <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#C8401A" }}>(required)</span>}</label>
         {children}
       </div>
@@ -136,12 +145,11 @@ function ScoreBar({ label, score, note }) {
 
 function TrendingKeywordsPanel({ keyword, data }) {
   if (!keyword?.trim()) return null;
-  const trendsUrl = `https://trends.google.com/explore?geo=US&hl=en-US&q=${encodeURIComponent(keyword.trim())}`;
+  const trendsUrl = `https://google.com{encodeURIComponent(keyword.trim())}`;
   const rising = data?.rising || [];
   const top = data?.top || [];
   const list = rising.length ? rising : top;
 
-  // Fixed visual copy elements to conform strictly to sentence case requirements and closed the list layout
   return (
     <div style={{ background: "#FFF", border: "1.5px solid #DDD9D0", borderRadius: 10, padding: "16px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
