@@ -81,7 +81,7 @@ function Field({ label, hint, required, children }) {
     <div className="cl-field" style={{ display: "flex", gap: 20, alignItems: "flex-start" }}>
       <div style={{ flex: "1 1 0", minWidth: 0 }}>
         {/* Style placeholder labelStyle assumed to be defined elsewhere in your file */}
-        <label style={labelStyle}>{label} {required && <span style={{ fontWeight: 400, letterSpacing: 0, textTransform: "none", color: "#C8401A" }}>(required)</span>}</label>
+        <label style={{ fontSize: 14, fontWeight: 600, color: "#1C1915", display: "block", marginBottom: 6 }}>
         {children}
       </div>
       {hint && (
