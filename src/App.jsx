@@ -269,13 +269,15 @@ const SEO_BENEFITS_SCHEMA = `"seo_keywords":[{"keyword":"","search_volume":"High
 // Precision guidance driven by internal review feedback: the generator was
 // merging visually-similar-but-distinct items (e.g. two similar phone colors
 // counted as one device) and using vague/decorative language instead of exact
-// feature or color names. Colors are now the model's own best judgment,
-// reported back as a result ("colors_identified") rather than supplied by
-// the user beforehand. Also folds in Samsung's A09/A10 anti-patterns
-// (verbose alt text, filler phrases like "image of") as always-on rules.
+// feature or color names. Guessing at official/marketing color names turned
+// out unreliable (they came back different from the actual product page), so
+// colors are described plainly and accurately from what's visible instead of
+// guessed as a specific named colorway. Also folds in Samsung's A09/A10
+// anti-patterns (verbose alt text, filler phrases like "image of") as
+// always-on rules.
 const PRECISION_INSTRUCTION = `
 Before writing, carefully count every distinct object, device, or person visible — look closely for subtle differences (e.g. two similar-looking colors on the same device model are likely different colorways, not the same unit) and treat each visually distinct unit as its own item, even when the difference is subtle. Do this silently as part of writing accurately — you don't need to report the count separately.
-Identify the color of each distinct unit shown — use the most likely real product/marketing color name if you can reasonably infer one from general knowledge of this product line, otherwise a clear, accurate generic color description. Report the distinct colors you identified as "colors_identified" (array of strings, one entry per distinct color/unit — empty array if not applicable, e.g. for a logo or icon).
+Describe colors plainly and accurately based on what's actually visible (e.g. "dark blue," "white") — do not guess at or invent a specific official/marketing color name, since that can't be verified from the image alone and may not match the actual product name.
 Use precise, correct feature/function names rather than vague or invented ones. Avoid unnecessary decorative or subjective language (e.g. "stunning," "sleek") that doesn't serve accessibility — keep descriptions functional and accurate, and leave out details that aren't useful for someone who can't see the media.
 Per Samsung accessibility guidelines, always avoid: verbose alt text that over-explains or narrates rather than staying concise (this applies especially to images describing a mobile device's function); and filler phrases like "image of," "picture of," or "graphic of" — screen readers already announce that an image is present, so naming it again is redundant.`;
 
@@ -359,7 +361,7 @@ export default function CopyLab() {
 
       if (altMode === "image") {
         sourceMode = altImageBase64 ? "upload" : "description";
-        const schema = `{"detected_image_type":{"value":"","label":""},"alt_text_variants":[{"focus_label":"","alt_text":"concise WCAG-appropriate alt text, ideally under 125 characters (empty string if the detected type calls for empty alt text)","long_description":"a fuller description for complex images — empty string if alt_text alone covers it"}],"notes":"any accessibility considerations, e.g. text baked into the image that should also appear as real text nearby, or why alt text is empty for this type","colors_identified":[],${SEO_BENEFITS_SCHEMA}}`;
+        const schema = `{"detected_image_type":{"value":"","label":""},"alt_text_variants":[{"focus_label":"","alt_text":"concise WCAG-appropriate alt text, ideally under 125 characters (empty string if the detected type calls for empty alt text)","long_description":"a fuller description for complex images — empty string if alt_text alone covers it"}],"notes":"any accessibility considerations, e.g. text baked into the image that should also appear as real text nearby, or why alt text is empty for this type",${SEO_BENEFITS_SCHEMA}}`;
 
         if (altImageBase64) {
           const prompt = `Write accessibility alt text for this image.${altContext.trim() ? ` Context: ${altContext.trim()}` : ""}
@@ -394,7 +396,7 @@ ${PRECISION_INSTRUCTION}
 ${VIDEO_VARIANTS_INSTRUCTION}
 ${SEO_BENEFITS_INSTRUCTION}
 Return ONLY valid JSON, no markdown, no preamble:
-{"video_alt_text_variants":[{"focus_label":"Product-focused","video_alt_text":"a concise description of what this video shows/is about, for accessibility (like alt text, but for video)"},{"focus_label":"Content-focused","video_alt_text":""}],"appears_captioned":true or false — true only if you can actually SEE burned-in/open captions in the video frames themselves; if you can't tell from the visuals, use false,"transcript_captions":"a full transcript of the spoken audio, formatted as readable caption text with natural line breaks — this is a draft caption track to use IF the video turns out to lack real closed captions on YouTube","notes":"1-2 sentences of any other accessibility notes, e.g. important on-screen text or visuals not covered by the audio","colors_identified":[],${SEO_BENEFITS_SCHEMA}}
+{"video_alt_text_variants":[{"focus_label":"Product-focused","video_alt_text":"a concise description of what this video shows/is about, for accessibility (like alt text, but for video)"},{"focus_label":"Content-focused","video_alt_text":""}],"appears_captioned":true or false — true only if you can actually SEE burned-in/open captions in the video frames themselves; if you can't tell from the visuals, use false,"transcript_captions":"a full transcript of the spoken audio, formatted as readable caption text with natural line breaks — this is a draft caption track to use IF the video turns out to lack real closed captions on YouTube","notes":"1-2 sentences of any other accessibility notes, e.g. important on-screen text or visuals not covered by the audio",${SEO_BENEFITS_SCHEMA}}
 ${JSON_VALIDITY_INSTRUCTION}`;
         const res = await fetch("/api/analyze-media", {
           method: "POST",
@@ -629,17 +631,6 @@ ${JSON_VALIDITY_INSTRUCTION}`;
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
                       {bf.map((f, i) => (
                         <span key={i} style={{ padding: "5px 11px", background: "#F5F8FF", border: "1px solid #3A5FC820", borderRadius: 20, fontSize: 12, color: "#2A3D80", fontFamily: "'DM Sans', sans-serif" }}>{f}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {result.colors_identified?.length > 0 && (
-                  <div>
-                    <p style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 10.5, letterSpacing: "0.07em", textTransform: "uppercase", color: "#9A9590", marginBottom: 8 }}>Colors Identified</p>
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                      {result.colors_identified.map((c, i) => (
-                        <span key={i} style={{ padding: "5px 11px", background: "#F7F5F0", border: "1px solid #DDD9D0", borderRadius: 20, fontSize: 12, color: "#3A3730", fontFamily: "'DM Sans', sans-serif" }}>{c}</span>
                       ))}
                     </div>
                   </div>
